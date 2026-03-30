@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EBA ITS DPM Viewer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, table, td, th, input, button, select, a {
+    font-family: 'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size: 10pt;
+  }
+  body { background: #F4F7FC; display: flex; min-height: 100vh; color: #1B2A4A; }
+
+  .sidebar {
+    width: 230px; min-height: 100vh; background: #1B2A4A;
+    display: flex; flex-direction: column;
+    position: fixed; top: 0; left: 0; bottom: 0;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.25); z-index: 100; overflow-y: auto;
+  }
+  .sidebar-logo { padding: 18px 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .sidebar-logo h1 { color: #fff; font-size: 10pt; font-weight: 700; line-height: 1.4; }
+  .sidebar-logo span { color: #6B82A8; font-size: 10pt; }
+  .sidebar-section { padding: 10px 0 3px 16px; font-size: 10pt; color: #4D6A9A; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .sidebar a {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 16px; color: #B8CCE8; font-size: 10pt;
+    text-decoration: none; border-left: 3px solid transparent; transition: all 0.15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    background: rgba(255,255,255,0.07); border-left-color: #4D9FEC; color: #fff;
+  }
+  .sidebar-footer { padding: 10px 16px; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.07); color: #4D6A9A; font-size: 10pt; }
+
+  .main { margin-left: 230px; flex: 1; display: flex; flex-direction: column; }
+  .topbar {
+    background: white; border-bottom: 2px solid #2B5FA8;
+    padding: 10px 26px; display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; z-index: 50; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .topbar h1 { color: #1B2A4A; font-size: 10pt; font-weight: 700; }
+  .badge { background: #2B5FA8; color: white; padding: 3px 11px; border-radius: 20px; font-size: 10pt; font-weight: 600; }
+  .stat-chip { display: inline-block; background: #E8F0FC; color: #1B2A4A; border-radius: 12px; padding: 2px 9px; font-size: 10pt; margin-right: 5px; }
+  .content { padding: 20px 26px; flex: 1; }
+
+  .tabs { display: flex; gap: 2px; border-bottom: 2px solid #2B5FA8; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab { padding: 6px 14px; font-size: 10pt; cursor: pointer; border: 1px solid #D0D8E8; border-bottom: none; background: #F4F7FC; color: #556; border-radius: 4px 4px 0 0; text-decoration: none; transition: background 0.12s; }
+  .tab.active { background: white; color: #2B5FA8; border-color: #2B5FA8; font-weight: 700; }
+  .tab:hover { background: #E8F0FC; }
+
+  .sheet-view { display: none; }
+
+  .sheet-title {
+    display: flex; align-items: center; justify-content: space-between;
+    background: white; border: 1px solid #C5D5E8; border-left: 4px solid #2B5FA8;
+    border-radius: 6px; padding: 8px 16px; margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .sheet-title h2 { color: #1B2A4A; font-size: 10pt; font-weight: 700; }
+  .back-btn {
+    background: #2B5FA8; color: white; border: none; border-radius: 4px;
+    padding: 5px 13px; font-size: 10pt; cursor: pointer;
+    text-decoration: none; display: inline-block; transition: background 0.15s;
+  }
+  .back-btn:hover { background: #1B4A8A; }
+
+  .table-wrap {
+    overflow: auto; max-height: 70vh;
+    border: 1px solid #D0D8E8; border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05); background: white;
+  }
+  /* Hard override: no cell may have a different font-size */
+  .table-wrap * {
+    font-family: 'Segoe UI','Inter','Calibri',system-ui,sans-serif !important;
+    font-size: 10pt !important;
+  }
+
+  .index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr)); gap: 10px; margin-top: 16px; }
+  .index-card {
+    background: white; border: 1px solid #C5D5E8; border-left: 4px solid #2B5FA8;
+    border-radius: 6px; padding: 10px 14px; text-decoration: none; display: block;
+    transition: box-shadow 0.15s, border-left-color 0.15s; color: #1B2A4A;
+  }
+  .index-card:hover { box-shadow: 0 4px 12px rgba(43,95,168,0.16); border-left-color: #4D9FEC; }
+  .index-card .cat { font-size: 10pt; color: #668; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .index-card .name { font-size: 10pt; font-weight: 700; margin-bottom: 2px; }
+  .index-card .desc { font-size: 10pt; color: #556; }
+</style>
+</head>
+<body>
+<nav class="sidebar"><div class="sidebar-logo"><h1>📊 EBA DPM Viewer</h1><span>ITS Data Point Model</span></div><div class="sidebar-section">Tabellenblätter</div><a href="#" class="active" onclick="showSheet('index-view',this);return false">🏠 Index</a><a href="#" onclick="showSheet('s_C_01_00',this);return false">📋 C 01.00</a><a href="#" onclick="showSheet('s_C_07_00',this);return false">📋 C 07.00</a><a href="#" onclick="showSheet('s_C_02_00',this);return false">📋 C 02.00</a><a href="#" onclick="showSheet('s_C_40_00',this);return false">📋 C 40.00</a><a href="#" onclick="showSheet('s_F_01_01',this);return false">📋 F 01.01</a><a href="#" onclick="showSheet('s_F_02_00',this);return false">📋 F 02.00</a><div class="sidebar-footer">eba_template.xlsx<br>7 sichtbare Blätter</div></nav><main class="main"><div class="topbar"><span style="font-size:1.5rem">📊</span><h1>EBA ITS DPM Viewer</h1><span class="badge">EBA ITS DPM</span><span class="stat-chip" style="margin-left:auto">7 Blätter</span></div><div class="content"><div class="tabs"><a class="tab active" href="#" onclick="showSheet('index-view',this);return false">🏠 Index</a><a class="tab" href="#" onclick="showSheet('s_C_01_00',this);return false">📋 C 01.00</a><a class="tab" href="#" onclick="showSheet('s_C_07_00',this);return false">📋 C 07.00</a><a class="tab" href="#" onclick="showSheet('s_C_02_00',this);return false">📋 C 02.00</a><a class="tab" href="#" onclick="showSheet('s_C_40_00',this);return false">📋 C 40.00</a><a class="tab" href="#" onclick="showSheet('s_F_01_01',this);return false">📋 F 01.01</a><a class="tab" href="#" onclick="showSheet('s_F_02_00',this);return false">📋 F 02.00</a></div><div id="index-view" class="sheet-view" style="display:block"><div style="font-weight:700;margin-bottom:10px">Index – Übersicht aller Meldebogen</div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:60px;min-width:60px">
+<col style="width:300px;min-width:300px">
+<col style="width:450px;min-width:450px">
+<col style="width:135px;min-width:135px">
+<col style="width:135px;min-width:135px">
+</colgroup>
+<tbody>
+<tr style="height:60px">
+<td rowspan="3" colspan="5" style="background-color:#1B2A4A;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="EBA ITS DPM – Reporting Framework">EBA ITS DPM – Reporting Framework</td>
+</tr>
+<tr style="height:20px">
+</tr>
+<tr style="height:20px">
+</tr>
+<tr style="height:37px">
+<td colspan="5" style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="Index – Übersicht aller Meldebogen">Index – Übersicht aller Meldebogen</td>
+</tr>
+<tr style="height:29px">
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Nr.">Nr.</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kurzbezeichnung">Kurzbezeichnung</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beschreibung">Beschreibung</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Meldebogen-ID">Meldebogen-ID</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kategorie">Kategorie</td>
+</tr>
+<tr style="height:27px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="C 01.00">C 01.00</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Eigenmittel (Säule 1)">Eigenmittel (Säule 1)</td>
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2021/03">EBA/ITS/2021/03</td>
+<td style="background-color:#C6E0B4;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Eigenmittel">Eigenmittel</td>
+</tr>
+<tr style="height:27px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2">2</td>
+<td style="background-color:#EEF4FB;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="C 02.00">C 02.00</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kapitalanforderungen">Kapitalanforderungen</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2021/03">EBA/ITS/2021/03</td>
+<td style="background-color:#C6E0B4;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Eigenmittel">Eigenmittel</td>
+</tr>
+<tr style="height:27px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3">3</td>
+<td style="color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="C 07.00">C 07.00</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kreditrisiko Standardansatz">Kreditrisiko Standardansatz</td>
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2021/04">EBA/ITS/2021/04</td>
+<td style="background-color:#FCE4D6;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kreditrisiko">Kreditrisiko</td>
+</tr>
+<tr style="height:27px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4">4</td>
+<td style="background-color:#EEF4FB;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="C 08.01">C 08.01</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kreditrisiko IRB-Basisansatz">Kreditrisiko IRB-Basisansatz</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2021/04">EBA/ITS/2021/04</td>
+<td style="background-color:#FCE4D6;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kreditrisiko">Kreditrisiko</td>
+</tr>
+<tr style="height:27px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5">5</td>
+<td style="color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="C 17.01">C 17.01</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Operationelles Risiko (BIA/TSA/AMA)">Operationelles Risiko (BIA/TSA/AMA)</td>
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2021/05">EBA/ITS/2021/05</td>
+<td style="background-color:#FFF2CC;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Op. Risiko">Op. Risiko</td>
+</tr>
+<tr style="height:27px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="6">6</td>
+<td style="background-color:#EEF4FB;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="C 40.00">C 40.00</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Verschuldungsquote">Verschuldungsquote</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2021/06">EBA/ITS/2021/06</td>
+<td style="background-color:#DDEBF7;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Verschuldung">Verschuldung</td>
+</tr>
+<tr style="height:27px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="7">7</td>
+<td style="color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="F 01.01">F 01.01</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Bilanz – Aktiva">Bilanz – Aktiva</td>
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2022/01">EBA/ITS/2022/01</td>
+<td style="background-color:#E2EFDA;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="FINREP">FINREP</td>
+</tr>
+<tr style="height:27px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="8">8</td>
+<td style="background-color:#EEF4FB;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="F 02.00">F 02.00</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Gewinn- und Verlustrechnung">Gewinn- und Verlustrechnung</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EBA/ITS/2022/01">EBA/ITS/2022/01</td>
+<td style="background-color:#E2EFDA;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="FINREP">FINREP</td>
+</tr>
+</tbody>
+</table>
+</div><div class="index-grid"><a href="#" onclick="showSheet('s_C_01_00',null);return false" class="index-card"><div class="cat">Eigenmittel</div><div class="name">📋 C 01.00</div><div class="desc">Eigenmittel (Säule 1)</div></a><a href="#" onclick="showSheet('s_C_07_00',null);return false" class="index-card"><div class="cat">Kreditrisiko</div><div class="name">📋 C 07.00</div><div class="desc">Kreditrisiko Standardansatz</div></a><a href="#" onclick="showSheet('s_C_02_00',null);return false" class="index-card"><div class="cat">Eigenmittel</div><div class="name">📋 C 02.00</div><div class="desc">Kapitalanforderungen</div></a><a href="#" onclick="showSheet('s_C_40_00',null);return false" class="index-card"><div class="cat">Verschuldung</div><div class="name">📋 C 40.00</div><div class="desc">Leverage Ratio</div></a><a href="#" onclick="showSheet('s_F_01_01',null);return false" class="index-card"><div class="cat">FINREP</div><div class="name">📋 F 01.01</div><div class="desc">Bilanz – Aktiva</div></a><a href="#" onclick="showSheet('s_F_02_00',null);return false" class="index-card"><div class="cat">FINREP</div><div class="name">📋 F 02.00</div><div class="desc">Gewinn- und Verlustrechnung</div></a></div></div><div id="s_C_01_00" class="sheet-view"><div class="sheet-title"><div><span style="font-weight:700">📋 C 01.00</span>&nbsp;&nbsp;<span class="stat-chip">17 Zeilen</span><span class="stat-chip">4 Spalten</span></div><a href="#" onclick="showSheet('index-view',null);return false" class="back-btn">⬅ Zurück zum Index</a></div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:45px;min-width:45px">
+<col style="width:412px;min-width:412px">
+<col style="width:135px;min-width:135px">
+<col style="width:135px;min-width:135px">
+</colgroup>
+<tbody>
+<tr style="height:43px">
+<td colspan="4" style="background-color:#1B2A4A;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="C 01.00 – Eigenmittel (Own Funds)">C 01.00 – Eigenmittel (Own Funds)</td>
+</tr>
+<tr style="height:29px">
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ref.">Ref.</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Posten">Posten</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Betrag (EUR)">Betrag (EUR)</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Vorjahr (EUR)">Vorjahr (EUR)</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#1B4A8A;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="background-color:#1B4A8A;color:#000000;font-weight:600;font-style:italic;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="TIER 1 KAPITAL">TIER 1 KAPITAL</td>
+<td style="background-color:#1B4A8A;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+<td style="background-color:#1B4A8A;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.1">1.1</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Hartes Kernkapital (CET1)">Hartes Kernkapital (CET1)</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+<td style="background-color:#2B5FA8;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#DDEEFF;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.1.1">1.1.1</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Eingezahltes Kapital">Eingezahltes Kapital</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="500,000,000">500,000,000</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="480,000,000">480,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#DDEEFF;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.1.2">1.1.2</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Rücklagen">Rücklagen</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,200,000,000">1,200,000,000</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,100,000,000">1,100,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#DDEEFF;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.1.3">1.1.3</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kumuliertes sonstiges Ergebnis">Kumuliertes sonstiges Ergebnis</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="45,000,000">45,000,000</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="38,000,000">38,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#FFDDD0;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.1.4">1.1.4</td>
+<td style="background-color:#FFDDD0;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Abzüge CET1">Abzüge CET1</td>
+<td style="background-color:#FFDDD0;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="-120,000,000">-120,000,000</td>
+<td style="background-color:#FFDDD0;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="-95,000,000">-95,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.1 Σ">1.1 Σ</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Summe CET1">Summe CET1</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,625,000,000">1,625,000,000</td>
+<td style="background-color:#C6E0B4;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,523,000,000">1,523,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.2">1.2</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Zusätzliches Kernkapital (AT1)">Zusätzliches Kernkapital (AT1)</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+<td style="background-color:#2B5FA8;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#DDEEFF;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.2.1">1.2.1</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="AT1-Instrumente">AT1-Instrumente</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="200,000,000">200,000,000</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="200,000,000">200,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1.2 Σ">1.2 Σ</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Summe AT1">Summe AT1</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="200,000,000">200,000,000</td>
+<td style="background-color:#C6E0B4;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="200,000,000">200,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#92D050;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1 Σ">1 Σ</td>
+<td style="background-color:#92D050;color:#000000;font-weight:600;font-style:italic;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="TIER 1 GESAMT">TIER 1 GESAMT</td>
+<td style="background-color:#92D050;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,825,000,000">1,825,000,000</td>
+<td style="background-color:#92D050;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,723,000,000">1,723,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#1B4A8A;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2">2</td>
+<td style="background-color:#1B4A8A;color:#000000;font-weight:600;font-style:italic;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="TIER 2 KAPITAL">TIER 2 KAPITAL</td>
+<td style="background-color:#1B4A8A;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+<td style="background-color:#1B4A8A;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#DDEEFF;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2.1">2.1</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="T2-Instrumente">T2-Instrumente</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="300,000,000">300,000,000</td>
+<td style="background-color:#DDEEFF;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="300,000,000">300,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2 Σ">2 Σ</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="TIER 2 GESAMT">TIER 2 GESAMT</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="300,000,000">300,000,000</td>
+<td style="background-color:#C6E0B4;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="300,000,000">300,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#00B050;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Σ">Σ</td>
+<td style="background-color:#00B050;color:#000000;font-weight:600;font-style:italic;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="GESAMTE EIGENMITTEL">GESAMTE EIGENMITTEL</td>
+<td style="background-color:#00B050;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,125,000,000">2,125,000,000</td>
+<td style="background-color:#00B050;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,023,000,000">2,023,000,000</td>
+</tr>
+</tbody>
+</table>
+</div></div><div id="s_C_07_00" class="sheet-view"><div class="sheet-title"><div><span style="font-weight:700">📋 C 07.00</span>&nbsp;&nbsp;<span class="stat-chip">13 Zeilen</span><span class="stat-chip">8 Spalten</span></div><a href="#" onclick="showSheet('index-view',null);return false" class="back-btn">⬅ Zurück zum Index</a></div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:60px;min-width:60px">
+<col style="width:240px;min-width:240px">
+<col style="width:120px;min-width:120px">
+<col style="width:105px;min-width:105px">
+<col style="width:105px;min-width:105px">
+<col style="width:105px;min-width:105px">
+<col style="width:105px;min-width:105px">
+<col style="width:105px;min-width:105px">
+</colgroup>
+<tbody>
+<tr style="height:43px">
+<td colspan="8" style="background-color:#1B2A4A;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="C 07.00 – Kreditrisiko Standardansatz">C 07.00 – Kreditrisiko Standardansatz</td>
+</tr>
+<tr style="height:47px">
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ref.">Ref.</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Forderungsklasse">Forderungsklasse</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Risikogewicht">Risikogewicht</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="EAD">EAD</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="RWA">RWA</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kreditkonversion">Kreditkonversion</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Netto-EAD">Netto-EAD</td>
+<td style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:pre-wrap;word-break:break-word;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Kapitalanforderung">Kapitalanforderung</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Zentralstaaten und Zentralbanken">Zentralstaaten und Zentralbanken</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0%">0%</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2">2</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Regionale/lokale Gebietskörpersch.">Regionale/lokale Gebietskörpersch.</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="20%">20%</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="150,000,000">150,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="30,000,000">30,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="150,000,000">150,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,400,000">2,400,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3">3</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Öffentliche Stellen">Öffentliche Stellen</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="20%">20%</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="80,000,000">80,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="16,000,000">16,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="80,000,000">80,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,280,000">1,280,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4">4</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Multilaterale Entwicklungsbanken">Multilaterale Entwicklungsbanken</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0%">0%</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="40,000,000">40,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="40,000,000">40,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5">5</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Internationale Organisationen">Internationale Organisationen</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0%">0%</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="10,000,000">10,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="10,000,000">10,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="0">0</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="6">6</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Institute">Institute</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="50%">50%</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="500,000,000">500,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="250,000,000">250,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="500,000,000">500,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="20,000,000">20,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="7">7</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Unternehmen">Unternehmen</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="100%">100%</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,500,000,000">2,500,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,500,000,000">2,500,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,500,000,000">2,500,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="200,000,000">200,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="8">8</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Mengengeschäft">Mengengeschäft</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="75%">75%</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="800,000,000">800,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="600,000,000">600,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="800,000,000">800,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="48,000,000">48,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="9">9</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Durch Immobilien besichert">Durch Immobilien besichert</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="35%">35%</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,200,000,000">1,200,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="420,000,000">420,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,200,000,000">1,200,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="33,600,000">33,600,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#EEF4FB;color:#000000;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="10">10</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ausgefallene Positionen">Ausgefallene Positionen</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="150%">150%</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="90,000,000">90,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="135,000,000">135,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1">1</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="90,000,000">90,000,000</td>
+<td style="background-color:#EEF4FB;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="10,800,000">10,800,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Σ">Σ</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="GESAMT">GESAMT</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,370,000,000">5,370,000,000</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,951,000,000">3,951,000,000</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="">&nbsp;</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,370,000,000">5,370,000,000</td>
+<td style="background-color:#C6E0B4;color:#000000;font-weight:600;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="316,080,000">316,080,000</td>
+</tr>
+</tbody>
+</table>
+</div></div><div id="s_C_02_00" class="sheet-view"><div class="sheet-title"><div><span style="font-weight:700">📋 C 02.00</span>&nbsp;&nbsp;<span class="stat-chip">7 Zeilen</span><span class="stat-chip">4 Spalten</span></div><a href="#" onclick="showSheet('index-view',null);return false" class="back-btn">⬅ Zurück zum Index</a></div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:60px;min-width:60px">
+<col style="width:375px;min-width:375px">
+<col style="width:150px;min-width:150px">
+<col style="width:150px;min-width:150px">
+</colgroup>
+<tbody>
+<tr style="height:43px">
+<td colspan="4" style="background-color:#2B5FA8;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="Kapitalanforderungen">Kapitalanforderungen</td>
+</tr>
+<tr style="height:20px">
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ref.">Ref.</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beschreibung">Beschreibung</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Wert">Wert</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Vorjahr">Vorjahr</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.1">Beispielwert 1.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.2">Beispielwert 1.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.1">Beispielwert 2.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.2">Beispielwert 2.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.1">Beispielwert 3.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.2">Beispielwert 3.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.1">Beispielwert 4.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.2">Beispielwert 4.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.1">Beispielwert 5.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.2">Beispielwert 5.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+</tr>
+</tbody>
+</table>
+</div></div><div id="s_C_40_00" class="sheet-view"><div class="sheet-title"><div><span style="font-weight:700">📋 C 40.00</span>&nbsp;&nbsp;<span class="stat-chip">7 Zeilen</span><span class="stat-chip">4 Spalten</span></div><a href="#" onclick="showSheet('index-view',null);return false" class="back-btn">⬅ Zurück zum Index</a></div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:60px;min-width:60px">
+<col style="width:375px;min-width:375px">
+<col style="width:150px;min-width:150px">
+<col style="width:150px;min-width:150px">
+</colgroup>
+<tbody>
+<tr style="height:43px">
+<td colspan="4" style="background-color:#4B008B;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="Verschuldungsquote (Leverage Ratio)">Verschuldungsquote (Leverage Ratio)</td>
+</tr>
+<tr style="height:20px">
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ref.">Ref.</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beschreibung">Beschreibung</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Wert">Wert</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Vorjahr">Vorjahr</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.1">Beispielwert 1.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.2">Beispielwert 1.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.1">Beispielwert 2.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.2">Beispielwert 2.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.1">Beispielwert 3.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.2">Beispielwert 3.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.1">Beispielwert 4.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.2">Beispielwert 4.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.1">Beispielwert 5.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.2">Beispielwert 5.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+</tr>
+</tbody>
+</table>
+</div></div><div id="s_F_01_01" class="sheet-view"><div class="sheet-title"><div><span style="font-weight:700">📋 F 01.01</span>&nbsp;&nbsp;<span class="stat-chip">7 Zeilen</span><span class="stat-chip">4 Spalten</span></div><a href="#" onclick="showSheet('index-view',null);return false" class="back-btn">⬅ Zurück zum Index</a></div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:60px;min-width:60px">
+<col style="width:375px;min-width:375px">
+<col style="width:150px;min-width:150px">
+<col style="width:150px;min-width:150px">
+</colgroup>
+<tbody>
+<tr style="height:43px">
+<td colspan="4" style="background-color:#145214;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="Bilanz – Aktiva (FINREP)">Bilanz – Aktiva (FINREP)</td>
+</tr>
+<tr style="height:20px">
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ref.">Ref.</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beschreibung">Beschreibung</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Wert">Wert</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Vorjahr">Vorjahr</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.1">Beispielwert 1.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.2">Beispielwert 1.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.1">Beispielwert 2.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.2">Beispielwert 2.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.1">Beispielwert 3.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.2">Beispielwert 3.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.1">Beispielwert 4.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.2">Beispielwert 4.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.1">Beispielwert 5.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.2">Beispielwert 5.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+</tr>
+</tbody>
+</table>
+</div></div><div id="s_F_02_00" class="sheet-view"><div class="sheet-title"><div><span style="font-weight:700">📋 F 02.00</span>&nbsp;&nbsp;<span class="stat-chip">7 Zeilen</span><span class="stat-chip">4 Spalten</span></div><a href="#" onclick="showSheet('index-view',null);return false" class="back-btn">⬅ Zurück zum Index</a></div><div class="table-wrap">
+<table style="
+    border-collapse:collapse;
+    font-family:'Segoe UI','Inter','Calibri',system-ui,sans-serif;
+    font-size:10pt;
+    line-height:1.45;
+    table-layout:fixed;
+    border:1px solid #ccc;
+">
+<colgroup>
+<col style="width:60px;min-width:60px">
+<col style="width:375px;min-width:375px">
+<col style="width:150px;min-width:150px">
+<col style="width:150px;min-width:150px">
+</colgroup>
+<tbody>
+<tr style="height:43px">
+<td colspan="4" style="background-color:#145214;color:#000000;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 6px;max-width:320px" title="Gewinn- und Verlustrechnung (FINREP)">Gewinn- und Verlustrechnung (FINREP)</td>
+</tr>
+<tr style="height:20px">
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Ref.">Ref.</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beschreibung">Beschreibung</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Wert">Wert</td>
+<td style="background-color:#D6E4F0;color:#1B2A4A;font-weight:600;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Vorjahr">Vorjahr</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.1">Beispielwert 1.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 1.2">Beispielwert 1.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="1,000,000">1,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.1">Beispielwert 2.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 2.2">Beispielwert 2.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="2,000,000">2,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.1">Beispielwert 3.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 3.2">Beispielwert 3.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="3,000,000">3,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.1">Beispielwert 4.1</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 4.2">Beispielwert 4.2</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+<td style="background-color:#F5F5F5;color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="4,000,000">4,000,000</td>
+</tr>
+<tr style="height:24px">
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.1">Beispielwert 5.1</td>
+<td style="color:#000000;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="Beispielwert 5.2">Beispielwert 5.2</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+<td style="color:#000000;text-align:right;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid #BDBDBD;border-bottom:1px solid #BDBDBD;border-left:1px solid #BDBDBD;border-right:1px solid #BDBDBD;padding:3px 6px;max-width:320px" title="5,000,000">5,000,000</td>
+</tr>
+</tbody>
+</table>
+</div></div></div></main>
+<script>
+function showSheet(id, trigger) {
+  document.querySelectorAll('.sheet-view').forEach(v => v.style.display = 'none');
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'block';
+  document.querySelectorAll('.tab, .sidebar a').forEach(function(t){ t.classList.remove('active'); });
+  if (trigger) trigger.classList.add('active');
+}
+</script>
+</body></html>
