@@ -22,7 +22,7 @@ EXCEL_PATH = os.environ.get(
     "EBA_EXCEL_PATH",
     str(Path(__file__).parent / "data" / "C_2024_8389_1_ANNEX_EN_V3_P1_3682615.XLSX"),
 )
-INDEX_SHEET = "Index"   # Name des Index-Blatts (case-sensitive)
+INDEX_SHEET = "CR SA"   # Name des Index-Blatts (case-sensitive)
 APP_TITLE = "EBA ITS DPM Viewer"
 # ──────────────────────────────────────────────────────────────────────────────
 
