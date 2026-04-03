@@ -184,6 +184,21 @@ def _format_value(value: Any, number_format: str | None) -> str:
     return str(value)
 
 
+
+def _is_near_white(hex6: str, threshold: int = 248) -> bool:
+    """Return True if all RGB components are >= threshold.
+
+    Covers pure white (FFFFFF), near-white theme tints (FCFCFC, FAFAFA, …)
+    and any other visually-empty light fill that should not block coordinates.
+    """
+    try:
+        r = int(hex6[0:2], 16)
+        g = int(hex6[2:4], 16)
+        b = int(hex6[4:6], 16)
+        return r >= threshold and g >= threshold and b >= threshold
+    except Exception:
+        return False
+
 def _cell_is_input(cell_data: CellData) -> bool:
     """Return True when a cell should receive a coordinate label.
 
@@ -408,9 +423,15 @@ def _extract_style(cell, theme_colors: list[str]) -> CellStyle:
                     color = _resolve_color(fill.fgColor, theme_colors, ignore_alpha=True)
                     if not color:
                         color = _resolve_color(fill.bgColor, theme_colors, ignore_alpha=True)
+                    # Near-white fills (e.g. theme tints resolving to FCFCFC, FAFAFA …)
+                    # are visually indistinguishable from no fill → treat as empty.
+                    if color and _is_near_white(color):
+                        color = None
                     style.bg_color = color
             else:
                 color = _resolve_color(getattr(fill, "fgColor", None), theme_colors, ignore_alpha=True)
+                if color and _is_near_white(color):
+                    color = None
                 style.bg_color = color
     except Exception:
         pass

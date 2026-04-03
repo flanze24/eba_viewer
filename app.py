@@ -5,7 +5,7 @@ Lädt eine Excel-Datei automatisch, stellt alle Tabellenblätter originalgetreu 
 und bietet eine Navigation über das "Index"-Blatt.
 
 Konfiguration:
-  Setze EXCEL_PATH auf den vollständigen Pfad zur Excel-Datei. fjdklsaf
+  Setze EXCEL_PATH auf den vollständigen Pfad zur Excel-Datei. 
 """
 
 from __future__ import annotations
