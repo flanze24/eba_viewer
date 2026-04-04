@@ -1,0 +1,131 @@
+/* ==========================================================================
+   eba_styles.css  –  EBA DPM Viewer · Tooltip & Cell Styles
+   ==========================================================================
+   Alle Klassen und ihre Parameter sind hier zentral kommentiert.
+   Änderungen hier wirken sich sofort auf den gerenderten Viewer aus.
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   1. EINGABE-ZELLE  (.eba-coord-cell)
+   Jede Zelle mit einer DPM-Koordinate bekommt diese Klasse.
+   position:relative  →  Anker für den absolut positionierten Tooltip
+   overflow:visible   →  Tooltip darf über die Zellengrenze hinausragen
+   -------------------------------------------------------------------------- */
+.eba-coord-cell {
+    position: relative;
+    overflow: visible !important;
+}
+
+
+/* --------------------------------------------------------------------------
+   2. BESCHRIFTUNGS-ZELLE  (.eba-label-cell)
+   Zeilen- und Spaltenbeschriftungen mit vierstelligem Zahlencode.
+   Gleiche Positionierungs-Logik wie .eba-coord-cell, aber eigene Klasse
+   für unabhängiges Styling (z.B. andere Hintergrundfarbe möglich).
+   -------------------------------------------------------------------------- */
+.eba-label-cell {
+    position: relative;
+    overflow: visible !important;
+    cursor: default;                 /* Normaler Cursor (kein Text-Cursor) */
+}
+
+
+/* --------------------------------------------------------------------------
+   3. ANNOTATIONS-BADGE  (.eba-badge)
+   Kleiner farbiger Punkt, der anzeigt, dass eine Annotation vorhanden ist.
+   Erscheint in der oberen rechten Ecke der Zelle.
+   -------------------------------------------------------------------------- */
+.eba-badge {
+    position: absolute;
+    top: 2px;                        /* Abstand vom oberen Zellenrand */
+    right: 3px;                      /* Abstand vom rechten Zellenrand */
+    width: 7px;                      /* Breite des Punktes */
+    height: 7px;                     /* Höhe des Punktes */
+    border-radius: 50%;              /* Rund (Kreis) */
+    background: #F59E0B;             /* Farbe: Amber/Orange */
+    pointer-events: none;            /* Klick geht durch zum td */
+    z-index: 1;
+}
+
+
+/* --------------------------------------------------------------------------
+   4. TOOLTIP-CONTAINER  (.eba-tooltip)
+   Die eigentliche Sprechblase. Standardmäßig unsichtbar (display:none),
+   wird bei Hover auf die Elternzelle eingeblendet (siehe Regel 7 & 8).
+   -------------------------------------------------------------------------- */
+.eba-tooltip {
+    display: none;                   /* Versteckt bis Hover */
+    position: absolute;
+    z-index: 9999;                   /* Immer im Vordergrund */
+    top: calc(100% + 4px);          /* Direkt unterhalb der Zelle, 4px Abstand */
+    left: 0;                         /* Linksbündig mit Zelle */
+    min-width: 200px;                /* Mindestbreite der Sprechblase */
+    max-width: 340px;                /* Maximale Breite (bricht dann um) */
+    background: #1B2A4A;            /* Hintergrundfarbe: Dunkelblau */
+    border: 1px solid #4D9FEC;      /* Rahmen: Hellblau */
+    border-radius: 6px;             /* Abgerundete Ecken */
+    padding: 8px 10px;              /* Innenabstand oben/unten · links/rechts */
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35); /* Schatten für Tiefenwirkung */
+    pointer-events: none;            /* Tooltip selbst reagiert nicht auf Maus */
+    white-space: normal;             /* Text bricht um */
+    word-break: break-word;          /* Lange Wörter werden getrennt */
+    font-size: 9pt !important;      /* Schriftgröße (überschreibt Tabellen-CSS) */
+    line-height: 1.5 !important;    /* Zeilenabstand */
+}
+
+
+/* --------------------------------------------------------------------------
+   5. KOORDINATEN-ZEILE im Tooltip  (.eba-tooltip-coord)
+   Zeigt den technischen Koordinaten-String (z.B. "C 01.00_0010_0020").
+   Erscheint als erste Zeile im Tooltip in einem hellen Blau.
+   -------------------------------------------------------------------------- */
+.eba-tooltip-coord {
+    display: block;
+    color: #7EB8F7;                  /* Hellblau für technische Kennung */
+    font-size: 8pt !important;      /* Etwas kleiner als Annotationstext */
+    font-weight: 600;                /* Halbfett */
+    letter-spacing: 0.3px;          /* Leichtes Sperren für Lesbarkeit */
+    margin-bottom: 2px;
+}
+
+
+/* --------------------------------------------------------------------------
+   6. TRENNLINIE im Tooltip  (.eba-tooltip-divider)
+   Horizontale Linie zwischen Koordinate und Annotationstext.
+   Nur sichtbar wenn eine Annotation vorhanden ist.
+   -------------------------------------------------------------------------- */
+.eba-tooltip-divider {
+    display: block;
+    border-top: 1px solid rgba(255,255,255,0.15); /* Dezente weiße Linie */
+    margin: 5px 0;                   /* Abstand oben und unten */
+}
+
+
+/* --------------------------------------------------------------------------
+   7. ANNOTATIONSTEXT im Tooltip  (.eba-tooltip-text)
+   Der eigentliche Freitext aus der Spalte "annotation" in coordinates.csv.
+   -------------------------------------------------------------------------- */
+.eba-tooltip-text {
+    display: block;
+    color: #E8EFF8;                  /* Fast-Weiß für gute Lesbarkeit */
+    font-size: 9pt !important;      /* Lesbare Schriftgröße */
+}
+
+
+/* --------------------------------------------------------------------------
+   8. HOVER-AKTIVIERUNG für Eingabe-Zellen
+   Zeigt den Tooltip wenn die Maus über einer .eba-coord-cell ist.
+   -------------------------------------------------------------------------- */
+.eba-coord-cell:hover .eba-tooltip {
+    display: block;
+}
+
+
+/* --------------------------------------------------------------------------
+   9. HOVER-AKTIVIERUNG für Beschriftungs-Zellen
+   Zeigt den Tooltip wenn die Maus über einer .eba-label-cell ist.
+   -------------------------------------------------------------------------- */
+.eba-label-cell:hover .eba-tooltip {
+    display: block;
+}

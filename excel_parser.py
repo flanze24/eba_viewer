@@ -44,7 +44,9 @@ class CellData:
     rowspan: int = 1
     colspan: int = 1
     is_merged_hidden: bool = False
-    coordinate: str | None = None   # e.g. "C 01.00,0010,0020"
+    coordinate: str | None = None   # e.g. "C 01.00_0010_0020"
+    annotation: str | None = None   # optional free-text note loaded from coordinates.csv
+    label_key:  str | None = None   # e.g. "C 01.00_row_0010" or "C 01.00_col_0020"
 
 
 @dataclass
@@ -289,6 +291,18 @@ def _build_coordinates(sheet: SheetData) -> None:
 
     # ── 3. Assign coordinates ────────────────────────────────────────────────
     sheet_name = sheet.name
+
+    # Tag column-header cells (the row that contains col codes)
+    if col_code_row is not None:
+        for ci, col_code in col_index_to_code.items():
+            if ci < len(rows[col_code_row]):
+                rows[col_code_row][ci].label_key = f"{sheet_name}_col_{col_code}"
+
+    # Tag row-code cells (the column that contains row codes)
+    for ri, row_code in row_index_to_code.items():
+        if ri < len(rows) and best_col < len(rows[ri]):
+            rows[ri][best_col].label_key = f"{sheet_name}_row_{row_code}"
+
     for ri, row_cells in enumerate(rows):
         row_code = row_index_to_code.get(ri)
         if row_code is None:

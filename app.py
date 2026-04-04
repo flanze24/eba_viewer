@@ -9,6 +9,7 @@ Konfiguration:
 """
 
 from __future__ import annotations
+import csv
 import os
 import sys
 from pathlib import Path
@@ -196,13 +197,45 @@ if "current_sheet" not in st.session_state:
 def load_workbook(path: str) -> dict[str, SheetData] | None:
     try:
         from export_coordinates import export_coordinates
-        export_coordinates(path)   
-        return parse_workbook(path)
+        csv_path = Path(path).parent / "coordinates.csv"
+        export_coordinates(path, csv_path)
+        sheets = parse_workbook(path)
+        _apply_annotations(sheets, csv_path)
+        return sheets
     except FileNotFoundError:
         return None
     except Exception as exc:
         st.error(f"Fehler beim Laden der Datei: {exc}")
         return None
+
+
+def _apply_annotations(sheets: dict[str, SheetData], csv_path: Path) -> None:
+    """Read annotations from coordinates.csv and attach them to matching cells.
+    Supports both full coordinates (input cells) and label keys (row/col headers).
+    """
+    if not csv_path.exists():
+        return
+    annotations: dict[str, str] = {}
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames or "annotation" not in reader.fieldnames:
+            return
+        # Support both old ("coordinate") and new ("key") CSV format
+        key_field = "key" if "key" in reader.fieldnames else "coordinate"
+        for row in reader:
+            note = row.get("annotation", "").strip()
+            if note:
+                annotations[row.get(key_field, "")] = note
+    if not annotations:
+        return
+    for sheet in sheets.values():
+        for row in sheet.rows:
+            for cell in row:
+                if cell.coordinate and cell.coordinate in annotations:
+                    cell.annotation = annotations[cell.coordinate]
+                lk = getattr(cell, "label_key", None)
+                if lk and lk in annotations:
+                    cell.annotation = annotations[lk]
 
 # ── Navigation helper ──────────────────────────────────────────────────────────
 def go_to(sheet_name: str) -> None:
@@ -390,4 +423,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

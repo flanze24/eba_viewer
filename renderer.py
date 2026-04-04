@@ -1,16 +1,29 @@
 """
 renderer.py
 Converts SheetData objects into styled HTML table strings.
+CSS is loaded from eba_styles.css (same directory) and injected once per table.
 """
 
 from __future__ import annotations
 import html
+from pathlib import Path
 from typing import Callable
 
 from excel_parser import SheetData, CellData, CellStyle
 
 BASE_FONT_SIZE = "10pt"
 FONT_STACK = "'Segoe UI','Inter','Calibri',system-ui,sans-serif"
+
+_CSS_PATH = Path(__file__).parent / "eba_styles.css"
+
+
+def _load_css() -> str:
+    """Return the content of eba_styles.css wrapped in <style> tags."""
+    try:
+        return f"<style>\n{_CSS_PATH.read_text(encoding='utf-8')}\n</style>"
+    except FileNotFoundError:
+        return ""  # Viewer works without CSS, just without fancy tooltips
+
 
 # ---------------------------------------------------------------------------
 # CSS helpers
@@ -29,8 +42,6 @@ def _style_to_css(style: CellStyle) -> str:
         parts.append("font-weight:600")
     if style.italic:
         parts.append("font-style:italic")
-
-    # No per-cell font-size or font-family – unified on <table>
 
     h_align = style.h_align or "left"
     parts.append(f"text-align:{h_align}")
@@ -63,6 +74,39 @@ def _style_to_css(style: CellStyle) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tooltip HTML builder
+# ---------------------------------------------------------------------------
+
+def _tooltip_html(key_label: str, annotation: str) -> str:
+    """Build the inner tooltip <span> for a given key and optional annotation."""
+    key_esc  = html.escape(key_label)
+    note_esc = html.escape(annotation) if annotation else ""
+
+    if annotation:
+        return (
+            f'<span class="eba-tooltip">'
+            f'<span class="eba-tooltip-coord">{key_esc}</span>'
+            f'<span class="eba-tooltip-divider"></span>'
+            f'<span class="eba-tooltip-text">{note_esc}</span>'
+            f'</span>'
+        )
+    return (
+        f'<span class="eba-tooltip">'
+        f'<span class="eba-tooltip-coord">{key_esc}</span>'
+        f'</span>'
+    )
+
+
+def _badge_html(annotation: str, tooltip_title: str) -> str:
+    """Orange dot badge – only rendered when annotation is present."""
+    if not annotation:
+        return ""
+    return (
+        f'<div class="eba-badge" title="{html.escape(tooltip_title)}"></div>'
+    )
+
+
+# ---------------------------------------------------------------------------
 # Table renderer
 # ---------------------------------------------------------------------------
 
@@ -90,7 +134,7 @@ def render_sheet_html(
             if cell.is_merged_hidden:
                 continue
 
-            css = _style_to_css(cell.style)
+            css  = _style_to_css(cell.style)
             text = html.escape(cell.display_value) if cell.display_value else "&nbsp;"
 
             span_attrs = ""
@@ -104,12 +148,13 @@ def render_sheet_html(
                 if href:
                     text = f'<a href="{href}" style="color:inherit;text-decoration:underline">{text}</a>'
 
-            # ── Coordinate label on input cells ──────────────────────────────
+            annotation = getattr(cell, "annotation", None) or ""
+
+            # ── A) Input cell with full DPM coordinate ────────────────────
             if cell.coordinate:
-                coord_escaped = html.escape(cell.coordinate)
-                # Input cell: light background, coordinate shown as small label
-                # stacked above an invisible input area
-                input_css = (
+                coord_esc   = html.escape(cell.coordinate)
+                title_attr  = html.escape(f"{annotation}\n\n{cell.coordinate}" if annotation else cell.coordinate)
+                input_css   = (
                     css
                     + ";background-color:#F0F4FF"
                     + ";position:relative"
@@ -121,14 +166,35 @@ def render_sheet_html(
                     f'font-size:7.5pt;color:#5573A8;line-height:1.1;'
                     f'padding:1px 4px 0 4px;white-space:nowrap;overflow:hidden;'
                     f'text-overflow:ellipsis;user-select:none;pointer-events:none'
-                    f'">{coord_escaped}</div>'
+                    f'">{coord_esc}</div>'
                     f'<div style="min-height:14px;padding:0 4px 2px 4px">&nbsp;</div>'
+                    + _badge_html(annotation, f"{annotation}\n\n{cell.coordinate}")
+                    + _tooltip_html(cell.coordinate, annotation)
                 )
                 tr_parts.append(
                     f'<td{span_attrs} style="{input_css}" '
-                    f'title="{coord_escaped}">'
+                    f'title="{title_attr}" class="eba-coord-cell">'
                     f'{inner}</td>'
                 )
+
+            # ── B) Label cell (row or column header with 4-digit code) ────
+            elif getattr(cell, "label_key", None):
+                lk         = cell.label_key
+                lk_esc     = html.escape(lk)
+                title_attr = html.escape(f"{annotation}\n\n{lk}" if annotation else lk)
+                label_css  = css + ";position:relative"
+                inner = (
+                    text
+                    + _badge_html(annotation, f"{annotation}\n\n{lk}")
+                    + _tooltip_html(lk, annotation)
+                )
+                tr_parts.append(
+                    f'<td{span_attrs} style="{label_css}" '
+                    f'title="{title_attr}" class="eba-label-cell">'
+                    f'{inner}</td>'
+                )
+
+            # ── C) Normal cell ────────────────────────────────────────────
             else:
                 tr_parts.append(
                     f'<td{span_attrs} style="{css}" title="{html.escape(cell.display_value)}">'
@@ -141,6 +207,7 @@ def render_sheet_html(
     tbody = "\n".join(tbody_parts)
 
     return f"""
+{_load_css()}
 <table style="
     border-collapse:collapse;
     font-family:{FONT_STACK};
