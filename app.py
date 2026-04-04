@@ -195,13 +195,14 @@ if "current_sheet" not in st.session_state:
 @st.cache_resource(show_spinner="⏳ Lade Excel-Datei …")
 def load_workbook(path: str) -> dict[str, SheetData] | None:
     try:
+        from export_coordinates import export_coordinates
+        export_coordinates(path)   
         return parse_workbook(path)
     except FileNotFoundError:
         return None
     except Exception as exc:
         st.error(f"Fehler beim Laden der Datei: {exc}")
         return None
-
 
 # ── Navigation helper ──────────────────────────────────────────────────────────
 def go_to(sheet_name: str) -> None:
@@ -389,3 +390,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
