@@ -1,6 +1,6 @@
 # EBA ITS DPM Viewer
 
-Eine Streamlit-Webanwendung zur originalgetreuen Darstellung von EBA-ITS-Excel-Dateien nach dem Data Point Model (DPM).
+Eine Streamlit-Webanwendung zur originalgetreuen Darstellung von EBA-ITS-Excel-Dateien nach dem Data Point Model (DPM). Leere Eingabezellen werden automatisch mit DPM-Koordinaten beschriftet und als CSV exportiert.
 
 ---
 
@@ -8,13 +8,15 @@ Eine Streamlit-Webanwendung zur originalgetreuen Darstellung von EBA-ITS-Excel-D
 
 ```
 eba_viewer/
-├── app.py              # Streamlit-Hauptanwendung
-├── excel_parser.py     # Excel-Verarbeitung und Koordinaten-Erkennung
-├── renderer.py         # HTML-Rendering der Tabellen
-├── requirements.txt    # Python-Abhängigkeiten
+├── app.py                   # Streamlit-Hauptanwendung
+├── excel_parser.py          # Excel-Verarbeitung und Koordinaten-Erkennung
+├── renderer.py              # HTML-Rendering der Tabellen
+├── export_coordinates.py    # CSV-Export aller DPM-Koordinaten
+├── requirements.txt         # Python-Abhängigkeiten
 ├── README.md
 └── data/
-    └── eba_template.xlsx   # Excel-Datei hier ablegen
+    ├── eba_template.xlsx    # Excel-Datei hier ablegen
+    └── coordinates.csv      # wird automatisch generiert
 ```
 
 ---
@@ -33,11 +35,11 @@ cp /pfad/zur/datei.xlsx data/eba_template.xlsx
 streamlit run app.py
 ```
 
+Beim ersten Start wird `data/coordinates.csv` automatisch erzeugt.
+
 ---
 
 ## Konfiguration
-
-Der Pfad zur Excel-Datei kann auf drei Wegen gesetzt werden, in absteigender Priorität:
 
 **Option A – Umgebungsvariable (empfohlen für Produktion)**
 ```bash
@@ -53,81 +55,118 @@ Die App sucht standardmäßig nach `data/eba_template.xlsx` relativ zum `app.py`
 EXCEL_PATH = "/vollständiger/pfad/zur/datei.xlsx"
 ```
 
-Falls die Datei beim Start nicht gefunden wird, erscheint eine Fehlerseite mit einem temporären Upload-Formular.
-
-Der Name des Index-Blatts ist ebenfalls konfigurierbar:
+Der Name des Index-Blatts ist ebenfalls konfigurierbar (Zeile 25 in `app.py`):
 ```python
-INDEX_SHEET = "Index"   # Standardwert in app.py
+INDEX_SHEET = "Index"
 ```
+
+Falls die Datei beim Start nicht gefunden wird, erscheint eine Fehlerseite mit einem temporären Upload-Formular.
 
 ---
 
 ## Features
 
 ### Navigation
-- **Sidebar** mit allen sichtbaren Tabellenblättern — ausgeblendete (`hidden`, `veryHidden`) werden automatisch gefiltert
+- **Sidebar** mit allen sichtbaren Tabellenblättern — ausgeblendete Blätter (`hidden`, `veryHidden`) werden automatisch gefiltert
 - **Index-Seite** als Startseite mit Tabellenansicht des Index-Blatts und Direktlink-Karten zu allen Blättern
 - **Rücknavigation** von jedem Blatt zum Index über einen Button oben rechts
 - **Tab-Leiste** für schnellen Wechsel zwischen Blättern
 
 ### Darstellung
 - Originalgetreue Wiedergabe aller Zellformate: Hintergrundfarben, Schriftfarbe, Fett/Kursiv, Textausrichtung, Rahmen, Merge-Bereiche (rowspan/colspan)
-- Korrekte Auflösung von Excel-Farbformaten: ARGB-RGB, Theme-Farben mit Tint/Shade, Indexed Colors
-- Weiße und schwarze Füllungen werden als „keine Füllung" behandelt (visuell identisch mit leerem Hintergrund)
+- Korrekte Auflösung aller Excel-Farbformate: ARGB-RGB, Theme-Farben mit Tint/Shade, Indexed Colors (Legacy)
+- Weiße, schwarze und near-white Füllungen (alle RGB-Kanäle ≥ 248) werden als „keine Füllung" behandelt
 - Vollständig leere Zeilen und Spalten werden automatisch entfernt
 
 ### Einheitliche Typografie
 - Eine einzige Schriftgröße (`10pt`) für alle Tabelleninhalte — Excel-Schriftgrößen werden nicht übernommen
-- Ein einziger Font-Stack für die gesamte Anwendung: `'Segoe UI', 'Inter', 'Calibri', system-ui, sans-serif`
-- Kein per-Zelle-Override möglich (CSS `!important` auf Wrapper-Ebene als Absicherung)
+- Ein einziger Font-Stack: `'Segoe UI', 'Inter', 'Calibri', system-ui, sans-serif`
+- CSS `!important` auf Wrapper-Ebene verhindert jeden per-Zelle-Override
 
 ### DPM-Koordinaten
-Leere, ungefärbte Eingabezellen in Tabellenblättern mit erkennbarer DPM-Struktur erhalten automatisch eine Koordinatenbezeichnung.
+Leere, ungefärbte Eingabezellen erhalten automatisch eine Koordinatenbezeichnung nach dem DPM-Schema.
 
 **Format:** `<Blattname>_<Zeilencode>_<Spaltencode>`
 Beispiel: `C 01.00_0010_0020`
 
 **Erkennungslogik:**
-- *Spaltencodes:* Die ersten **15 Zeilen** jedes Blatts werden nach einer Zeile durchsucht, die mindestens einen vierstelligen numerischen Code (z.B. `0010`, `0020`) enthält. Die erste solche Zeile gilt als Spalten-Header.
-- *Zeilencodes:* Die ersten **5 Spalten** werden verglichen; die Spalte mit den meisten vierstelligen Codes wird als Zeilen-Header-Spalte verwendet.
-- Eine Zelle bekommt eine Koordinate **nur wenn** sie sich im Schnittbereich einer Zeile mit Zeilencode und einer Spalte mit Spaltencode befindet **und** weder eine Hintergrundfüllung noch Textinhalt hat.
-- Zellen ohne Zeilenzuordnung bekommen keine Koordinate.
+- *Spaltencodes:* Die ersten **15 Zeilen** jedes Blatts werden durchsucht. Die erste Zeile mit mindestens einem vierstelligen numerischen Code (`0010`, `0020` …) gilt als Spalten-Header.
+- *Zeilencodes:* Die ersten **5 Spalten** werden verglichen. Die Spalte mit den meisten vierstelligen Codes wird als Zeilen-Header-Spalte verwendet.
+- Eine Zelle erhält eine Koordinate **nur wenn** sie im Schnittbereich einer codierten Zeile und Spalte liegt **und** weder Hintergrundfüllung noch Textinhalt hat.
+- Zellen ohne Zeilenzuordnung erhalten keine Koordinate.
 
-Die Koordinate wird als kleine blaue Beschriftung oben in der Zelle angezeigt und ist auch im Tooltip sichtbar.
+Die Koordinate erscheint als kleine blaue Beschriftung oben in der Zelle und im Tooltip.
+
+### CSV-Export der Koordinaten
+Beim Start der App wird `data/coordinates.csv` automatisch erzeugt (bzw. aktualisiert).
+
+**Speicherort:** `data/coordinates.csv` (relativ zum `app.py`-Verzeichnis)
+
+**Spalten:**
+
+| Spalte | Beschreibung | Beispiel |
+|---|---|---|
+| `coordinate` | Vollständige Koordinate | `C 01.00_0010_0020` |
+| `sheet` | Blattname | `C 01.00` |
+| `row_code` | Vierstelliger Zeilencode | `0010` |
+| `col_code` | Vierstelliger Spaltencode | `0020` |
+
+**Integration in `app.py`** – der Export wird in Zeile 198 aufgerufen, direkt nach `parse_workbook`:
+```python
+@st.cache_resource(show_spinner="⏳ Lade Excel-Datei …")
+def load_workbook(path: str) -> dict[str, SheetData] | None:
+    try:
+        sheets = parse_workbook(path)
+        from export_coordinates import export_coordinates
+        export_coordinates(path)        # ← Zeile 199: CSV-Export
+        return sheets
+    ...
+```
+
+Da `@st.cache_resource` den Block nur einmal pro Anwendungsstart ausführt, wird die CSV ebenfalls nur einmal geschrieben.
+
+**Standalone-Nutzung** (ohne App):
+```bash
+# Mit Standardpfaden
+python export_coordinates.py
+
+# Mit eigenen Pfaden
+python export_coordinates.py /pfad/zur/datei.xlsx /pfad/zur/ausgabe.csv
+```
+
+**Als Modul:**
+```python
+from export_coordinates import export_coordinates
+n = export_coordinates("data/meine_datei.xlsx", "data/coordinates.csv")
+print(f"{n} Koordinaten exportiert")
+```
 
 ---
 
 ## Modulbeschreibung
 
-### `excel_parser.py`
+### `app.py`
+Streamlit-Hauptanwendung. Enthält Seitenkonfiguration, globales CSS, Session-State-Routing, Sidebar, Index-Seite und Blatt-Ansicht. Lädt die Workbook-Daten über `@st.cache_resource` (einmaliges Parsen pro Anwendungsstart) und triggert den CSV-Export nach dem Laden.
 
+### `excel_parser.py`
 Liest Excel-Dateien mit `openpyxl` und gibt strukturierte `SheetData`-Objekte zurück.
 
 | Funktion / Klasse | Aufgabe |
 |---|---|
-| `parse_workbook(path)` | Lädt die Arbeitsmappe, filtert ausgeblendete Blätter, parst alle sichtbaren Blätter und ruft `_build_coordinates` auf |
-| `_parse_sheet(ws, theme_colors)` | Liest Zellen, Merge-Bereiche, Spaltenbreiten und Zeilenhöhen; entfernt leere Zeilen/Spalten |
-| `_extract_style(cell, theme_colors)` | Extrahiert Füllfarbe, Schriftformat, Ausrichtung, Rahmen und Zahlenformat |
-| `_resolve_color(color_obj, theme_colors, ignore_alpha)` | Konvertiert ARGB-, Theme- und Indexed-Farben in 6-stellige Hex-Strings; ignoriert bei Füllfarben das Alpha-Byte (Excel-Verhalten) |
-| `_build_coordinates(sheet)` | Erkennt das DPM-Koordinatensystem und weist Eingabezellen ihre Koordinate zu |
+| `parse_workbook(path)` | Lädt die Arbeitsmappe, filtert ausgeblendete Blätter, parst alle sichtbaren Blätter, ruft `_build_coordinates` auf |
+| `_parse_sheet(ws, theme_colors)` | Liest Zellen, Merge-Bereiche, Spaltenbreiten, Zeilenhöhen; entfernt leere Zeilen/Spalten |
+| `_extract_style(cell, theme_colors)` | Extrahiert Füllfarbe, Schriftformat, Ausrichtung, Rahmen, Zahlenformat |
+| `_resolve_color(color_obj, theme_colors, ignore_alpha)` | Konvertiert ARGB-, Theme- und Indexed-Farben in 6-stellige Hex-Strings; ignoriert Alpha-Byte bei Füllfarben |
+| `_is_near_white(hex6, threshold=248)` | Gibt `True` zurück wenn alle RGB-Kanäle ≥ threshold — solche Farben gelten als „keine Füllung" |
+| `_build_coordinates(sheet)` | Erkennt das DPM-Koordinatensystem (Scan bis Zeile 15 / Spalte 5) und weist Eingabezellen ihre Koordinate zu |
 | `CellData` | Datenklasse pro Zelle: Wert, Anzeigetext, Style, Rowspan/Colspan, Koordinate |
 | `SheetData` | Datenklasse pro Blatt: Zellen-Matrix, Spaltenbreiten, Zeilenhöhen |
 
 ### `renderer.py`
+Wandelt `SheetData`-Objekte in HTML-`<table>`-Strings um. Keine per-Zelle-Schriftgröße oder Schriftart. Eingabezellen mit Koordinate erhalten hellblauen Hintergrund (`#F0F4FF`) mit Koordinatenbeschriftung.
 
-Wandelt `SheetData`-Objekte in HTML-`<table>`-Strings um.
-
-- Keine per-Zelle-Schriftgröße oder Schriftart — einheitliche Basis auf `<table>`-Ebene
-- Eingabezellen mit Koordinate erhalten hellblauen Hintergrund (`#F0F4FF`) und die Koordinate als kleine Beschriftung
-- Unterstützt einen optionalen `link_resolver` für klickbare Index-Links
-
-### `app.py`
-
-Streamlit-Hauptanwendung mit:
-- `@st.cache_resource` für performantes Laden — die Datei wird nur einmal geparst, auch bei mehreren gleichzeitigen Sitzungen
-- Session-State-basiertes Routing zwischen Index und Blatt-Ansichten
-- Globaler CSS-Override zur Durchsetzung der einheitlichen Typografie
-- Fallback-Upload wenn die konfigurierte Datei nicht gefunden wird
+### `export_coordinates.py`
+Iteriert über alle geparsten Blätter und Zellen, sammelt alle gesetzten `cell.coordinate`-Werte und schreibt sie als CSV mit den Spalten `coordinate`, `sheet`, `row_code`, `col_code`. Gibt die Anzahl der exportierten Koordinaten zurück. Kann als Skript oder als importiertes Modul verwendet werden.
 
 ---
 
@@ -142,6 +181,6 @@ Streamlit-Hauptanwendung mit:
 
 ## Performance-Hinweise
 
-- Durch `@st.cache_resource` wird die Datei nur beim ersten Aufruf geparst; alle weiteren Sitzungen greifen auf den Cache zu
-- Für Dateien über 50 MB empfiehlt sich `server.maxUploadSize = 200` in der Streamlit-Konfiguration
-- Bei sehr vielen Blättern (> 50) kann die Sidebar-Darstellung lang werden — ggf. Filterung nach Kategorie ergänzen
+- `@st.cache_resource` stellt sicher, dass Parsen und CSV-Export nur einmal pro Anwendungsstart ausgeführt werden
+- Für Dateien über 50 MB: `server.maxUploadSize = 200` in der Streamlit-Konfiguration setzen
+- Bei sehr vielen Blättern (> 50) kann eine Filterung der Sidebar nach Kategorie sinnvoll sein
