@@ -1,6 +1,6 @@
 # EBA ITS DPM Viewer
 
-Eine Streamlit-Webanwendung zur originalgetreuen Darstellung von EBA-ITS-Excel-Dateien nach dem Data Point Model (DPM). Leere Eingabezellen werden automatisch mit DPM-Koordinaten beschriftet und als CSV exportiert.
+Eine Streamlit-Webanwendung zur originalgetreuen Darstellung von EBA-ITS-Excel-Dateien nach dem Data Point Model (DPM). Leere Eingabezellen werden automatisch mit DPM-Koordinaten beschriftet. Zeilen- und Spaltenbeschriftungen sowie Eingabezellen können manuell mit Freitextannotationen versehen werden, die als interaktive Tooltips beim Mouse-over erscheinen. Alle Koordinaten und Annotationen werden in einer CSV-Datei verwaltet.
 
 ---
 
@@ -11,12 +11,13 @@ eba_viewer/
 ├── app.py                   # Streamlit-Hauptanwendung
 ├── excel_parser.py          # Excel-Verarbeitung und Koordinaten-Erkennung
 ├── renderer.py              # HTML-Rendering der Tabellen
-├── export_coordinates.py    # CSV-Export aller DPM-Koordinaten
+├── export_coordinates.py    # CSV-Export aller DPM-Koordinaten und Labels
+├── eba_styles.css           # Alle CSS-Regeln (auskommentiert, zentral anpassbar)
 ├── requirements.txt         # Python-Abhängigkeiten
 ├── README.md
 └── data/
     ├── eba_template.xlsx    # Excel-Datei hier ablegen
-    └── coordinates.csv      # wird automatisch generiert
+    └── coordinates.csv      # wird automatisch generiert / manuell gepflegt
 ```
 
 ---
@@ -81,24 +82,45 @@ Falls die Datei beim Start nicht gefunden wird, erscheint eine Fehlerseite mit e
 ### Einheitliche Typografie
 - Eine einzige Schriftgröße (`10pt`) für alle Tabelleninhalte — Excel-Schriftgrößen werden nicht übernommen
 - Ein einziger Font-Stack: `'Segoe UI', 'Inter', 'Calibri', system-ui, sans-serif`
-- CSS `!important` auf Wrapper-Ebene verhindert jeden per-Zelle-Override
 
 ### DPM-Koordinaten
+
 Leere, ungefärbte Eingabezellen erhalten automatisch eine Koordinatenbezeichnung nach dem DPM-Schema.
 
-**Format:** `<Blattname>_<Zeilencode>_<Spaltencode>`
+**Format:** `<Blattname>_<Zeilencode>_<Spaltencode>`  
 Beispiel: `C 01.00_0010_0020`
 
 **Erkennungslogik:**
-- *Spaltencodes:* Die ersten **15 Zeilen** jedes Blatts werden durchsucht. Die erste Zeile mit mindestens einem vierstelligen numerischen Code (`0010`, `0020` …) gilt als Spalten-Header.
-- *Zeilencodes:* Die ersten **5 Spalten** werden verglichen. Die Spalte mit den meisten vierstelligen Codes wird als Zeilen-Header-Spalte verwendet.
+- *Spaltencodes:* Die ersten 15 Zeilen jedes Blatts werden durchsucht. Die erste Zeile mit mindestens einem vierstelligen numerischen Code (`0010`, `0020` …) gilt als Spalten-Header.
+- *Zeilencodes:* Die ersten 5 Spalten werden verglichen. Die Spalte mit den meisten vierstelligen Codes wird als Zeilen-Header-Spalte verwendet.
 - Eine Zelle erhält eine Koordinate **nur wenn** sie im Schnittbereich einer codierten Zeile und Spalte liegt **und** weder Hintergrundfüllung noch Textinhalt hat.
-- Zellen ohne Zeilenzuordnung erhalten keine Koordinate.
 
 Die Koordinate erscheint als kleine blaue Beschriftung oben in der Zelle und im Tooltip.
 
+### Annotationen & Tooltips
+
+Jede Eingabezelle sowie jede Zeilen- und Spaltenbeschriftung kann mit einem Freitext-Kommentar versehen werden. Die Annotation erscheint beim Mouse-over als Sprechblase.
+
+**Visueller Hinweis:** Zellen mit Annotation tragen einen kleinen orangenen Punkt (●) in der oberen rechten Ecke.
+
+**Drei Arten von annotierbaren Einträgen:**
+
+| Typ | Key-Format | Beispiel |
+|---|---|---|
+| Eingabezelle | `<Blatt>_<Zeilencode>_<Spaltencode>` | `C 01.00_0010_0020` |
+| Spaltenbeschriftung | `<Blatt>_col_<Spaltencode>` | `C 01.00_col_0020` |
+| Zeilenbeschriftung | `<Blatt>_row_<Zeilencode>` | `C 01.00_row_0010` |
+
+**Annotation hinzufügen:**
+1. `data/coordinates.csv` in Excel oder einem Texteditor öffnen
+2. In der Spalte `annotation` den gewünschten Text eintragen
+3. CSV speichern → App neu starten
+
+Annotationen werden bei einem Re-Export der CSV **automatisch erhalten** – manuelle Einträge gehen nicht verloren, wenn die XLSX neu geladen wird.
+
 ### CSV-Export der Koordinaten
-Beim Start der App wird `data/coordinates.csv` automatisch erzeugt (bzw. aktualisiert).
+
+Beim Start der App wird `data/coordinates.csv` automatisch erzeugt bzw. aktualisiert.
 
 **Speicherort:** `data/coordinates.csv` (relativ zum `app.py`-Verzeichnis)
 
@@ -106,31 +128,16 @@ Beim Start der App wird `data/coordinates.csv` automatisch erzeugt (bzw. aktuali
 
 | Spalte | Beschreibung | Beispiel |
 |---|---|---|
-| `coordinate` | Vollständige Koordinate | `C 01.00_0010_0020` |
+| `key` | Eindeutiger Schlüssel (Koordinate oder Label-Key) | `C 01.00_0010_0020` |
+| `type` | Eintragstyp: `cell`, `col_label`, `row_label` | `cell` |
 | `sheet` | Blattname | `C 01.00` |
-| `row_code` | Vierstelliger Zeilencode | `0010` |
-| `col_code` | Vierstelliger Spaltencode | `0020` |
-
-**Integration in `app.py`** – der Export wird in Zeile 198 aufgerufen, direkt nach `parse_workbook`:
-```python
-@st.cache_resource(show_spinner="⏳ Lade Excel-Datei …")
-def load_workbook(path: str) -> dict[str, SheetData] | None:
-    try:
-        sheets = parse_workbook(path)
-        from export_coordinates import export_coordinates
-        export_coordinates(path)        # ← Zeile 199: CSV-Export
-        return sheets
-    ...
-```
-
-Da `@st.cache_resource` den Block nur einmal pro Anwendungsstart ausführt, wird die CSV ebenfalls nur einmal geschrieben.
+| `row_code` | Vierstelliger Zeilencode (leer bei `col_label`) | `0010` |
+| `col_code` | Vierstelliger Spaltencode (leer bei `row_label`) | `0020` |
+| `annotation` | Freitext-Kommentar (manuell befüllbar) | `Buchwert gem. IAS 39` |
 
 **Standalone-Nutzung** (ohne App):
 ```bash
-# Mit Standardpfaden
 python export_coordinates.py
-
-# Mit eigenen Pfaden
 python export_coordinates.py /pfad/zur/datei.xlsx /pfad/zur/ausgabe.csv
 ```
 
@@ -138,15 +145,31 @@ python export_coordinates.py /pfad/zur/datei.xlsx /pfad/zur/ausgabe.csv
 ```python
 from export_coordinates import export_coordinates
 n = export_coordinates("data/meine_datei.xlsx", "data/coordinates.csv")
-print(f"{n} Koordinaten exportiert")
+print(f"{n} Einträge exportiert")
 ```
+
+---
+
+## Styling anpassen (`eba_styles.css`)
+
+Alle visuellen Parameter der Tooltips und annotierbaren Zellen sind in `eba_styles.css` zentral zusammengefasst und kommentiert. Die Datei wird beim Rendern jedes Blatts eingelesen – Änderungen wirken sich nach einem App-Neustart sofort aus.
+
+| CSS-Klasse | Steuert |
+|---|---|
+| `.eba-coord-cell` | Eingabezellen mit DPM-Koordinate (position, overflow) |
+| `.eba-label-cell` | Zeilen-/Spaltenbeschriftungen mit 4-stelligem Code |
+| `.eba-badge` | Orangener Hinweis-Punkt bei vorhandener Annotation |
+| `.eba-tooltip` | Sprechblase: Position, Größe, Farbe, Schatten, Schrift |
+| `.eba-tooltip-coord` | Technischer Key im Tooltip (oben, blau) |
+| `.eba-tooltip-divider` | Trennlinie zwischen Key und Annotationstext |
+| `.eba-tooltip-text` | Annotationstext im Tooltip (unten, fast-weiß) |
 
 ---
 
 ## Modulbeschreibung
 
 ### `app.py`
-Streamlit-Hauptanwendung. Enthält Seitenkonfiguration, globales CSS, Session-State-Routing, Sidebar, Index-Seite und Blatt-Ansicht. Lädt die Workbook-Daten über `@st.cache_resource` (einmaliges Parsen pro Anwendungsstart) und triggert den CSV-Export nach dem Laden.
+Streamlit-Hauptanwendung. Enthält Seitenkonfiguration, globales CSS, Session-State-Routing, Sidebar, Index-Seite und Blatt-Ansicht. Lädt Workbook-Daten über `@st.cache_resource` (einmaliges Parsen pro Anwendungsstart), triggert den CSV-Export und wendet anschließend Annotationen aus der CSV auf die geparsten Zellen an (`_apply_annotations`).
 
 ### `excel_parser.py`
 Liest Excel-Dateien mit `openpyxl` und gibt strukturierte `SheetData`-Objekte zurück.
@@ -156,17 +179,28 @@ Liest Excel-Dateien mit `openpyxl` und gibt strukturierte `SheetData`-Objekte zu
 | `parse_workbook(path)` | Lädt die Arbeitsmappe, filtert ausgeblendete Blätter, parst alle sichtbaren Blätter, ruft `_build_coordinates` auf |
 | `_parse_sheet(ws, theme_colors)` | Liest Zellen, Merge-Bereiche, Spaltenbreiten, Zeilenhöhen; entfernt leere Zeilen/Spalten |
 | `_extract_style(cell, theme_colors)` | Extrahiert Füllfarbe, Schriftformat, Ausrichtung, Rahmen, Zahlenformat |
-| `_resolve_color(color_obj, theme_colors, ignore_alpha)` | Konvertiert ARGB-, Theme- und Indexed-Farben in 6-stellige Hex-Strings; ignoriert Alpha-Byte bei Füllfarben |
-| `_is_near_white(hex6, threshold=248)` | Gibt `True` zurück wenn alle RGB-Kanäle ≥ threshold — solche Farben gelten als „keine Füllung" |
-| `_build_coordinates(sheet)` | Erkennt das DPM-Koordinatensystem (Scan bis Zeile 15 / Spalte 5) und weist Eingabezellen ihre Koordinate zu |
-| `CellData` | Datenklasse pro Zelle: Wert, Anzeigetext, Style, Rowspan/Colspan, Koordinate |
+| `_resolve_color(...)` | Konvertiert ARGB-, Theme- und Indexed-Farben in 6-stellige Hex-Strings |
+| `_is_near_white(hex6)` | `True` wenn alle RGB-Kanäle ≥ 248 → wird als „keine Füllung" behandelt |
+| `_build_coordinates(sheet)` | Erkennt DPM-Koordinaten (Scan bis Zeile 15 / Spalte 5); setzt `cell.coordinate` für Eingabezellen sowie `cell.label_key` für Zeilen-/Spaltenköpfe |
+| `CellData` | Datenklasse pro Zelle: Wert, Anzeigetext, Style, Rowspan/Colspan, `coordinate`, `label_key`, `annotation` |
 | `SheetData` | Datenklasse pro Blatt: Zellen-Matrix, Spaltenbreiten, Zeilenhöhen |
 
 ### `renderer.py`
-Wandelt `SheetData`-Objekte in HTML-`<table>`-Strings um. Keine per-Zelle-Schriftgröße oder Schriftart. Eingabezellen mit Koordinate erhalten hellblauen Hintergrund (`#F0F4FF`) mit Koordinatenbeschriftung.
+Wandelt `SheetData`-Objekte in HTML-`<table>`-Strings um. Unterscheidet drei Zelltypen beim Rendering:
+
+| Typ | Bedingung | Rendering |
+|---|---|---|
+| Eingabezelle | `cell.coordinate` gesetzt | Hellblauer Hintergrund, Koordinaten-Label, Tooltip |
+| Beschriftungszelle | `cell.label_key` gesetzt | Normales Styling + Tooltip bei Hover |
+| Standardzelle | keines von beidem | Normales Styling, kein Tooltip |
+
+CSS wird aus `eba_styles.css` geladen und einmalig pro Tabelle als `<style>`-Block eingefügt. Fällt die CSS-Datei weg, bleibt der Viewer voll funktionsfähig (nur ohne Tooltip-Styling).
 
 ### `export_coordinates.py`
-Iteriert über alle geparsten Blätter und Zellen, sammelt alle gesetzten `cell.coordinate`-Werte und schreibt sie als CSV mit den Spalten `coordinate`, `sheet`, `row_code`, `col_code`. Gibt die Anzahl der exportierten Koordinaten zurück. Kann als Skript oder als importiertes Modul verwendet werden.
+Iteriert über alle geparsten Blätter und Zellen, sammelt Eingabe-Koordinaten (`cell.coordinate`) und Label-Keys (`cell.label_key`) und schreibt sie als CSV. Bestehende Annotationen werden vor dem Überschreiben eingelesen und in die neue Datei übertragen.
+
+### `eba_styles.css`
+Zentrale Stylesheet-Datei. Jede Regel ist mit Kommentaren versehen, die erklären, welchen visuellen Parameter sie steuert. Kann ohne Python-Kenntnisse angepasst werden.
 
 ---
 
@@ -181,6 +215,6 @@ Iteriert über alle geparsten Blätter und Zellen, sammelt alle gesetzten `cell.
 
 ## Performance-Hinweise
 
-- `@st.cache_resource` stellt sicher, dass Parsen und CSV-Export nur einmal pro Anwendungsstart ausgeführt werden
+- `@st.cache_resource` stellt sicher, dass Parsen, CSV-Export und Annotation-Mapping nur einmal pro Anwendungsstart ausgeführt werden
 - Für Dateien über 50 MB: `server.maxUploadSize = 200` in der Streamlit-Konfiguration setzen
 - Bei sehr vielen Blättern (> 50) kann eine Filterung der Sidebar nach Kategorie sinnvoll sein
