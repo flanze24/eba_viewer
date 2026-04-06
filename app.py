@@ -22,7 +22,7 @@ import streamlit as st
 #   export EBA_EXCEL_PATH="/pfad/zur/datei.xlsx"
 EXCEL_PATH = os.environ.get(
     "EBA_EXCEL_PATH",
-    str(Path(__file__).parent / "data" / "C_2024_8389_1_ANNEX_EN_V3_P1_3682615 Kopie.XLSX"),
+    str(Path(__file__).parent / "data" / "C_2024_8389_F1_ANNEX_DE_V1_P1_3682615.XLSX"),
 )
 INDEX_SHEET = "Index"   # Name des Index-Blatts (case-sensitive)
 APP_TITLE   = "EBA ITS DPM Viewer"
@@ -272,6 +272,18 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
         "AMM TE": "AMM",
         "TEMPLA": "G-SII",
         "IRRBB":  "IRRBB",
+        # Extra sections that appear as standalone annex blocks
+        "IP_VERLUSTE": "IP-Verluste",
+        "VERSCHULDUNG": "Verschuldungsquote",
+    }
+
+    # Keywords that signal a new top-level section in the annex blocks
+    # (matched against *any* non-empty cell in col B/C/D of header-only rows)
+    ANNEX_KEYWORDS = {
+        "IP-VERLUSTE":        "IP_VERLUSTE",
+        "IP VERLUSTE":        "IP_VERLUSTE",
+        "IMMOBILIENBESICHER": "IP_VERLUSTE",
+        "VERSCHULDUNG":       "VERSCHULDUNG",
     }
 
     groups: list[IndexGroup] = []
@@ -282,6 +294,32 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
     def _c(v) -> str:
         return str(v).strip() if v is not None else ""
 
+    def _find_sheet(candidate: str) -> str | None:
+        """Return the actual sheet name for *candidate*, or None.
+
+        Handles:
+        - Exact match
+        - Case-insensitive match
+        - The Index lists 'LR6.1' and 'LR6.2' as separate entries, but the
+          workbook has a single sheet named 'LR6.1, LR6.2'.  We therefore
+          also look for any sheet whose name *contains* the candidate token
+          (after normalising non-breaking spaces and punctuation).
+        """
+        c = candidate.strip().replace("\xa0", " ")
+        if c in sheet_names:
+            return c
+        c_lower = c.lower()
+        for sn in sheet_names:
+            if sn.strip().lower() == c_lower:
+                return sn
+        # Partial / combined-sheet fallback:
+        # e.g. candidate="LR6.1" → sheet="LR6.1, LR6.2"
+        for sn in sheet_names:
+            sn_norm = sn.strip().lower()
+            if c_lower in sn_norm:
+                return sn
+        return None
+
     for row in ws.iter_rows(min_row=4, max_row=500):
         c2 = _c(row[1].value)   # col B = number
         c3 = _c(row[2].value)   # col C = template code
@@ -290,13 +328,25 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
 
         # ── Top-level section rows (no code, no sheet name) ──────────────
         if not c3 and not c5:
+            # Standard COREP/FINREP sections (keyword in col B)
+            matched = False
             for kw, _ in SECTION_MAP.items():
                 if c2.upper().startswith(kw.upper()):
                     if kw == "FINREP":
                         finrep_count += 1
                     current_section  = kw
                     current_subgroup = ""
+                    matched = True
                     break
+
+            if not matched:
+                # Annex blocks: keyword may appear in col B (long descriptive text)
+                combined = f"{c2} {c4}".upper().replace("\xa0", " ")
+                for kw, section_key in ANNEX_KEYWORDS.items():
+                    if kw in combined:
+                        current_section  = section_key
+                        current_subgroup = ""
+                        break
             continue
 
         # ── Sub-group rows (no code, has name) ───────────────────────────
@@ -305,15 +355,7 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
             continue
 
         # ── Template row: find matching sheet ────────────────────────────
-        target_sheet: str | None = None
-        c5s = c5.strip()
-        if c5s in sheet_names:
-            target_sheet = c5s
-        else:
-            for sn in sheet_names:
-                if sn.strip().lower() == c5s.lower():
-                    target_sheet = sn
-                    break
+        target_sheet = _find_sheet(c5)
 
         if target_sheet is None:
             continue
@@ -322,7 +364,7 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
         if finrep_count >= 2 and current_section == "FINREP":
             sec_display = "FINREP · GAAP"
         else:
-            sec_display = SECTION_DISPLAY.get(current_section, current_section)
+            sec_display = SECTION_DISPLAY.get(current_section, current_section or "Sonstige")
 
         # Include subgroup for sections that benefit from it
         if current_subgroup and current_section in ("COREP", "FINREP", "IRRBB", "LIQUID"):
@@ -332,6 +374,11 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
 
         if not groups or groups[-1].label != group_label:
             groups.append(IndexGroup(label=group_label))
+
+        # Deduplicate: don't add the same sheet twice within one group
+        existing_names = {e.short_name for e in groups[-1].entries}
+        if target_sheet in existing_names:
+            continue
 
         groups[-1].entries.append(IndexEntry(
             short_name=target_sheet,
