@@ -224,19 +224,21 @@ def _build_coordinates(sheet: SheetData) -> None:
     """
     Assign coordinate strings to input cells.
 
-    Coordinate format: "<sheet_name>,<col_code>,<row_code>"
+    Coordinate format: "<sheet_name>_<row_code>_<col_code>"
     where col_code and row_code are 4-digit strings found in the header
     row/column of the sheet.
 
     Discovery rules:
-    - Column codes: scan the first 15 rows for a row whose cells contain
-      at least 1 four-digit value.  That row index is the "column-header row".
-      The column position of each four-digit value is its column index.
-    - Row codes: scan the first column for four-digit values.  The row
-      position of each four-digit value is its row index.
-    - Only cells that are BOTH in a row that has a row-code AND in a column
-      that has a column-code receive a coordinate.
-    - Cells that already have a bg_color or have text content are skipped.
+    - Row codes: scan the first 5 columns and pick the one with the most
+      four-digit values.  That column carries the row codes for the whole sheet.
+    - Column codes: every row that contains ≥1 four-digit code in a column
+      other than the row-code column is treated as a column-header row.
+      The first such row seeds the initial col→code mapping; each subsequent
+      col-header row updates the mapping — this handles sheets like LR4 that
+      contain multiple sub-tables with different column layouts.
+    - A cell receives a coordinate only when it lies at the intersection of
+      a coded row AND a coded column AND is an input cell (no bg, no text).
+    - Column-header cells and row-code cells are tagged with label_key instead.
     """
     rows = sheet.rows
     if not rows:
@@ -245,27 +247,7 @@ def _build_coordinates(sheet: SheetData) -> None:
     n_rows = len(rows)
     n_cols = len(rows[0]) if rows else 0
 
-    # ── 1. Find the column-header row ────────────────────────────────────────
-    # Scan first 15 rows; pick the first one with ≥1 four-digit codes.
-    col_code_row: int | None = None   # 0-based index into rows
-    col_index_to_code: dict[int, str] = {}  # col 0-based → "0010"
-
-    for ri in range(min(15, n_rows)):
-        codes_in_row: dict[int, str] = {}
-        for ci, cell in enumerate(rows[ri]):
-            v = cell.display_value.strip()
-            if _FOUR_DIGIT.match(v):
-                codes_in_row[ci] = v
-        if len(codes_in_row) >= 1:
-            col_code_row = ri
-            col_index_to_code = codes_in_row
-            break
-
-    # ── 2. Find row codes – scan first 5 columns ─────────────────────────────
-    # Pick the column (among the first 5) with the most four-digit values;
-    # that column carries the row codes.
-    row_index_to_code: dict[int, str] = {}  # row 0-based → "0010"
-
+    # ── 1. Find the row-code column ──────────────────────────────────────────
     best_col: int = 0
     best_count: int = 0
     for ci in range(min(5, n_cols)):
@@ -278,6 +260,7 @@ def _build_coordinates(sheet: SheetData) -> None:
             best_count = count
             best_col = ci
 
+    row_index_to_code: dict[int, str] = {}
     if best_count > 0:
         for ri in range(n_rows):
             if not rows[ri] or best_col >= len(rows[ri]):
@@ -286,29 +269,88 @@ def _build_coordinates(sheet: SheetData) -> None:
             if _FOUR_DIGIT.match(v):
                 row_index_to_code[ri] = v
 
-    if not col_index_to_code or not row_index_to_code:
-        return   # sheet has no recognisable DPM coordinate system
+    # ── 2. Identify ALL column-header rows ───────────────────────────────────
+    # A row qualifies when it has ≥1 four-digit code in any column except the
+    # row-code column.
+    col_header_rows: dict[int, dict[int, str]] = {}
+    for ri in range(n_rows):
+        codes: dict[int, str] = {}
+        for ci, cell in enumerate(rows[ri]):
+            if ci == best_col:
+                continue
+            v = cell.display_value.strip()
+            if _FOUR_DIGIT.match(v):
+                codes[ci] = v
+        if codes:
+            col_header_rows[ri] = codes
 
-    # ── 3. Assign coordinates ────────────────────────────────────────────────
+    if not col_header_rows or not row_index_to_code:
+        # ── Fallback: row codes exist but no col-header rows ─────────────────
+        # Sheets like CA1 / CA3 have a single data column with a plain-text
+        # header (e.g. "Betrag") instead of a 4-digit DPM code.  In this case
+        # we synthesise a single column code "0010" for every column that is
+        # not the row-code column and contains at least one empty input cell.
+        if not row_index_to_code:
+            return  # no row codes at all → nothing to do
+
+        sheet_name = sheet.name
+
+        # Tag row-code cells
+        for ri, row_code in row_index_to_code.items():
+            if ri < len(rows) and best_col < len(rows[ri]):
+                rows[ri][best_col].label_key = f"{sheet_name}_row_{row_code}"
+
+        # Find input columns: not the row-code col, has at least one input cell
+        input_cols = [
+            ci for ci in range(n_cols)
+            if ci != best_col
+            and any(
+                _cell_is_input(rows[ri][ci])
+                for ri in row_index_to_code
+                if ri < len(rows) and ci < len(rows[ri])
+            )
+        ]
+
+        # Assign synthetic col codes 0010, 0020, … for each input column
+        for col_rank, ci in enumerate(input_cols):
+            synthetic_col_code = f"{(col_rank + 1) * 10:04d}"
+            for ri, row_code in row_index_to_code.items():
+                if ri < len(rows) and ci < len(rows[ri]):
+                    cell = rows[ri][ci]
+                    if _cell_is_input(cell):
+                        cell.coordinate = f"{sheet_name}_{row_code}_{synthetic_col_code}"
+        return
+
+    # ── 3. Build effective col→code mapping for each data row ────────────────
+    # Walk rows top-to-bottom; whenever a col-header row is encountered,
+    # update the current mapping.  Snapshot it for every data (row-code) row.
+    current_col_map: dict[int, str] = dict(col_header_rows[min(col_header_rows)])
+    row_col_maps: dict[int, dict[int, str]] = {}
+
+    for ri in range(n_rows):
+        if ri in col_header_rows:
+            current_col_map = dict(col_header_rows[ri])
+        if ri in row_index_to_code:
+            row_col_maps[ri] = dict(current_col_map)
+
     sheet_name = sheet.name
 
-    # Tag column-header cells (the row that contains col codes)
-    if col_code_row is not None:
-        for ci, col_code in col_index_to_code.items():
-            if ci < len(rows[col_code_row]):
-                rows[col_code_row][ci].label_key = f"{sheet_name}_col_{col_code}"
+    # ── 4. Tag column-header cells ───────────────────────────────────────────
+    for hri, codes in col_header_rows.items():
+        for ci, col_code in codes.items():
+            if ci < len(rows[hri]):
+                rows[hri][ci].label_key = f"{sheet_name}_col_{col_code}"
 
-    # Tag row-code cells (the column that contains row codes)
+    # ── 5. Tag row-code cells ────────────────────────────────────────────────
     for ri, row_code in row_index_to_code.items():
         if ri < len(rows) and best_col < len(rows[ri]):
             rows[ri][best_col].label_key = f"{sheet_name}_row_{row_code}"
 
-    for ri, row_cells in enumerate(rows):
-        row_code = row_index_to_code.get(ri)
-        if row_code is None:
-            continue  # rows without a row-code get no coordinate
-        for ci, cell in enumerate(row_cells):
-            col_code = col_index_to_code.get(ci)
+    # ── 6. Assign coordinates to input cells ─────────────────────────────────
+    for ri, col_map in row_col_maps.items():
+        row_code = row_index_to_code[ri]
+        for ci, cell in enumerate(rows[ri]):
+            col_code = col_map.get(ci)
             if col_code is None:
                 continue
             if _cell_is_input(cell):

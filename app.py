@@ -297,25 +297,23 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
     def _find_sheet(candidate: str) -> str | None:
         """Return the actual sheet name for *candidate*, or None.
 
-        Handles:
-        - Exact match
-        - Case-insensitive match
-        - The Index lists 'LR6.1' and 'LR6.2' as separate entries, but the
-          workbook has a single sheet named 'LR6.1, LR6.2'.  We therefore
-          also look for any sheet whose name *contains* the candidate token
-          (after normalising non-breaking spaces and punctuation).
+        Normalises non-breaking spaces in BOTH the candidate and the sheet
+        name before comparing, so entries like 'CCR 1' match sheets named
+        'CCR\xa01'.  Also handles combined sheets like 'LR6.1' → 'LR6.1, LR6.2'.
         """
         c = candidate.strip().replace("\xa0", " ")
-        if c in sheet_names:
-            return c
         c_lower = c.lower()
+        # Exact match after normalisation
         for sn in sheet_names:
-            if sn.strip().lower() == c_lower:
+            if sn.replace("\xa0", " ").strip() == c:
                 return sn
-        # Partial / combined-sheet fallback:
-        # e.g. candidate="LR6.1" → sheet="LR6.1, LR6.2"
+        # Case-insensitive match after normalisation
         for sn in sheet_names:
-            sn_norm = sn.strip().lower()
+            if sn.replace("\xa0", " ").strip().lower() == c_lower:
+                return sn
+        # Partial / combined-sheet fallback (e.g. 'LR6.1' → 'LR6.1, LR6.2')
+        for sn in sheet_names:
+            sn_norm = sn.replace("\xa0", " ").strip().lower()
             if c_lower in sn_norm:
                 return sn
         return None
@@ -388,6 +386,14 @@ def _parse_index_structure(path: str) -> list[IndexGroup]:
         ))
 
     wb.close()
+
+    # ── Sort entries within each group by workbook sheet order ───────────────
+    wb2 = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    sheet_order = {name: i for i, name in enumerate(wb2.sheetnames)}
+    wb2.close()
+    for grp in groups:
+        grp.entries.sort(key=lambda e: sheet_order.get(e.short_name, 9999))
+
     return groups
 
 
@@ -471,7 +477,7 @@ def render_sidebar(sheets: dict[str, SheetData], groups: list[IndexGroup]) -> No
                     if name not in sheets:
                         continue
                     is_active = st.session_state.current_sheet == name
-                    label = f"{entry.template_code}  {name}" if entry.template_code else name
+                    label = name
                     nav_counter += 1
                     if st.button(
                         label,
@@ -554,7 +560,7 @@ def render_index(sheets: dict[str, SheetData], groups: list[IndexGroup]) -> None
                 cols = st.columns(3)
                 for i, entry in enumerate(valid):
                     with cols[i % 3]:
-                        label = f"{entry.template_code}  {entry.short_name}" if entry.template_code else entry.short_name
+                        label = entry.short_name
                         if st.button(
                             label,
                             key=f"idx_{grp.label}_{i}_{entry.short_name}",
