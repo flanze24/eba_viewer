@@ -2,10 +2,10 @@
 app.py – EBA ITS DPM Viewer (Streamlit)
 ========================================
 Lädt eine Excel-Datei automatisch, stellt alle Tabellenblätter originalgetreu dar
-und bietet eine Navigation über das "Index"-Blatt.
+und bietet eine Navigation über das "Index"-Blatt mit automatischer Gruppierung.
 
 Konfiguration:
-  Setze EXCEL_PATH auf den vollständigen Pfad zur Excel-Datei. 
+  Setze EXCEL_PATH auf den vollständigen Pfad zur Excel-Datei.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import csv
 import os
 import sys
 from pathlib import Path
+from dataclasses import dataclass, field
 
 import streamlit as st
 
@@ -21,10 +22,10 @@ import streamlit as st
 #   export EBA_EXCEL_PATH="/pfad/zur/datei.xlsx"
 EXCEL_PATH = os.environ.get(
     "EBA_EXCEL_PATH",
-    str(Path(__file__).parent / "data" / "C_2024_8389_1_ANNEX_EN_V3_P1_3682615.XLSX"),
+    str(Path(__file__).parent / "data" / "C_2024_8389_1_ANNEX_EN_V3_P1_3682615 Kopie.XLSX"),
 )
 INDEX_SHEET = "Index"   # Name des Index-Blatts (case-sensitive)
-APP_TITLE = "EBA ITS DPM Viewer"
+APP_TITLE   = "EBA ITS DPM Viewer"
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Add current dir to path so modules resolve correctly
@@ -56,10 +57,22 @@ table, table td, table th, table * {
     line-height: 1.45 !important;
 }
 
-/* Sidebar */
+/* ── Sidebar ── */
 section[data-testid="stSidebar"] {
     background: #1B2A4A;
     color: #E8EFF8;
+    min-width: 260px;
+}
+/* Group header labels */
+section[data-testid="stSidebar"] .sidebar-group-label {
+    color: #7EB8F7;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 10px 12px 2px 12px;
+    margin-top: 4px;
+    display: block;
 }
 section[data-testid="stSidebar"] .stButton button {
     width: 100%;
@@ -69,22 +82,35 @@ section[data-testid="stSidebar"] .stButton button {
     border: none;
     border-left: 3px solid transparent;
     border-radius: 0;
-    padding: 6px 12px;
-    font-size: 0.85rem;
-    margin: 1px 0;
+    padding: 4px 12px 4px 16px;
+    font-size: 0.82rem;
+    margin: 0;
     transition: all 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 section[data-testid="stSidebar"] .stButton button:hover {
     background: rgba(255,255,255,0.08);
     border-left-color: #4D9FEC;
     color: #ffffff;
 }
+section[data-testid="stSidebar"] .stButton button[kind="primary"] {
+    background: rgba(77,159,236,0.18) !important;
+    border-left-color: #4D9FEC !important;
+    color: #ffffff !important;
+    font-weight: 600;
+}
+section[data-testid="stSidebar"] hr {
+    border-color: rgba(255,255,255,0.12);
+    margin: 6px 0;
+}
 section[data-testid="stSidebar"] h1 {
     color: #E8EFF8;
     font-size: 1.1rem;
 }
 
-/* Main header */
+/* ── Main header ── */
 .eba-header {
     display: flex;
     align-items: center;
@@ -192,21 +218,148 @@ if "current_sheet" not in st.session_state:
     st.session_state.current_sheet = INDEX_SHEET
 
 
+# ── Index structure dataclasses ───────────────────────────────────────────────
+@dataclass
+class IndexEntry:
+    short_name: str      # sheet name, e.g. "CA1"
+    template_code: str   # e.g. "C 01.00"
+    template_name: str   # long name
+    number: str          # template number string
+
+@dataclass
+class IndexGroup:
+    label: str
+    entries: list[IndexEntry] = field(default_factory=list)
+
+
+# ── Index parsing ─────────────────────────────────────────────────────────────
+def _parse_index_structure(path: str) -> list[IndexGroup]:
+    """
+    Read the Index sheet and return a list of IndexGroups by scanning
+    section headers and template rows.
+    """
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    except Exception:
+        return []
+
+    if INDEX_SHEET not in wb.sheetnames:
+        wb.close()
+        return []
+
+    ws        = wb[INDEX_SHEET]
+    sheet_names = set(wb.sheetnames)
+
+    SECTION_MAP = {
+        "COREP":  "COREP",
+        "FINREP": "FINREP",
+        "IP LOS": "IP Losses",
+        "LARGE":  "Large Exposures",
+        "LEVERA": "Leverage Ratio",
+        "LIQUID": "Liquidity",
+        "AMM TE": "AMM",
+        "TEMPLA": "G-SII",
+        "IRRBB":  "IRRBB",
+    }
+    SECTION_DISPLAY = {
+        "COREP":  "COREP",
+        "FINREP": "FINREP · IFRS",
+        "IP LOS": "IP Losses",
+        "LARGE":  "Large Exposures",
+        "LEVERA": "Leverage Ratio",
+        "LIQUID": "Liquidity",
+        "AMM TE": "AMM",
+        "TEMPLA": "G-SII",
+        "IRRBB":  "IRRBB",
+    }
+
+    groups: list[IndexGroup] = []
+    current_section  = ""
+    current_subgroup = ""
+    finrep_count     = 0
+
+    def _c(v) -> str:
+        return str(v).strip() if v is not None else ""
+
+    for row in ws.iter_rows(min_row=4, max_row=500):
+        c2 = _c(row[1].value)   # col B = number
+        c3 = _c(row[2].value)   # col C = template code
+        c4 = _c(row[3].value)   # col D = name
+        c5 = _c(row[4].value)   # col E = short name / sheet name
+
+        # ── Top-level section rows (no code, no sheet name) ──────────────
+        if not c3 and not c5:
+            for kw, _ in SECTION_MAP.items():
+                if c2.upper().startswith(kw.upper()):
+                    if kw == "FINREP":
+                        finrep_count += 1
+                    current_section  = kw
+                    current_subgroup = ""
+                    break
+            continue
+
+        # ── Sub-group rows (no code, has name) ───────────────────────────
+        if not c3 and c4 and not c5:
+            current_subgroup = c4.title()
+            continue
+
+        # ── Template row: find matching sheet ────────────────────────────
+        target_sheet: str | None = None
+        c5s = c5.strip()
+        if c5s in sheet_names:
+            target_sheet = c5s
+        else:
+            for sn in sheet_names:
+                if sn.strip().lower() == c5s.lower():
+                    target_sheet = sn
+                    break
+
+        if target_sheet is None:
+            continue
+
+        # Build group label
+        if finrep_count >= 2 and current_section == "FINREP":
+            sec_display = "FINREP · GAAP"
+        else:
+            sec_display = SECTION_DISPLAY.get(current_section, current_section)
+
+        # Include subgroup for sections that benefit from it
+        if current_subgroup and current_section in ("COREP", "FINREP", "IRRBB", "LIQUID"):
+            group_label = f"{sec_display} · {current_subgroup.title()}"
+        else:
+            group_label = sec_display
+
+        if not groups or groups[-1].label != group_label:
+            groups.append(IndexGroup(label=group_label))
+
+        groups[-1].entries.append(IndexEntry(
+            short_name=target_sheet,
+            template_code=c3,
+            template_name=c4,
+            number=c2,
+        ))
+
+    wb.close()
+    return groups
+
+
 # ── Data loading (cached) ──────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="⏳ Lade Excel-Datei …")
-def load_workbook(path: str) -> dict[str, SheetData] | None:
+def load_workbook(path: str):
     try:
         from export_coordinates import export_coordinates
         csv_path = Path(path).parent / "coordinates.csv"
         export_coordinates(path, csv_path)
         sheets = parse_workbook(path)
         _apply_annotations(sheets, csv_path)
-        return sheets
+        groups = _parse_index_structure(path)
+        return sheets, groups
     except FileNotFoundError:
-        return None
+        return None, []
     except Exception as exc:
         st.error(f"Fehler beim Laden der Datei: {exc}")
-        return None
+        return None, []
 
 
 def _apply_annotations(sheets: dict[str, SheetData], csv_path: Path) -> None:
@@ -237,22 +390,63 @@ def _apply_annotations(sheets: dict[str, SheetData], csv_path: Path) -> None:
                 if lk and lk in annotations:
                     cell.annotation = annotations[lk]
 
+
 # ── Navigation helper ──────────────────────────────────────────────────────────
 def go_to(sheet_name: str) -> None:
     st.session_state.current_sheet = sheet_name
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
-def render_sidebar(sheets: dict[str, SheetData]) -> None:
+def render_sidebar(sheets: dict[str, SheetData], groups: list[IndexGroup]) -> None:
     with st.sidebar:
         st.markdown("## 📊 EBA DPM Viewer")
         st.markdown("---")
-        st.markdown("**Tabellenblätter**")
-        for name in sheets:
-            icon = "🏠" if name == INDEX_SHEET else "📋"
-            active = " ← aktiv" if name == st.session_state.current_sheet else ""
-            if st.button(f"{icon} {name}{active}", key=f"nav_{name}"):
-                go_to(name)
+
+        # Index / Home button
+        is_index = st.session_state.current_sheet == INDEX_SHEET
+        if st.button(
+            "🏠 Index",
+            key="nav_index",
+            type="primary" if is_index else "secondary",
+        ):
+            go_to(INDEX_SHEET)
+
+        if groups:
+            # Grouped navigation built from the parsed Index structure
+            nav_counter = 0
+            for grp in groups:
+                st.markdown(
+                    f'<span class="sidebar-group-label">{grp.label}</span>',
+                    unsafe_allow_html=True,
+                )
+                for entry in grp.entries:
+                    name = entry.short_name
+                    if name not in sheets:
+                        continue
+                    is_active = st.session_state.current_sheet == name
+                    label = f"{entry.template_code}  {name}" if entry.template_code else name
+                    nav_counter += 1
+                    if st.button(
+                        label,
+                        key=f"nav_{nav_counter}_{name}",
+                        type="primary" if is_active else "secondary",
+                        help=entry.template_name,
+                    ):
+                        go_to(name)
+        else:
+            # Fallback: flat list
+            st.markdown(
+                '<span class="sidebar-group-label">Tabellenblätter</span>',
+                unsafe_allow_html=True,
+            )
+            for name in sheets:
+                if name == INDEX_SHEET:
+                    continue
+                is_active = st.session_state.current_sheet == name
+                if st.button(name, key=f"nav_{name}",
+                             type="primary" if is_active else "secondary"):
+                    go_to(name)
+
         st.markdown("---")
         st.markdown(
             f"<small style='color:#8899BB'>Datei:<br><code style='font-size:0.7rem'>"
@@ -276,17 +470,17 @@ def render_header() -> None:
 
 
 # ── Index page ─────────────────────────────────────────────────────────────────
-def render_index(sheets: dict[str, SheetData]) -> None:
+def render_index(sheets: dict[str, SheetData], groups: list[IndexGroup]) -> None:
     render_header()
 
     index_data = sheets.get(INDEX_SHEET)
     if index_data is None:
-        st.warning(f"Kein Tabellenblatt mit dem Namen „{INDEX_SHEET}“ gefunden.")
+        st.warning(f'Kein Tabellenblatt "{INDEX_SHEET}" gefunden.')
         _render_fallback_index(sheets)
         return
 
     # Stat bar
-    n_sheets = len(sheets)
+    n_sheets = len(sheets) - 1   # exclude Index itself
     st.markdown(
         f'<span class="stat-chip">📄 {n_sheets} Tabellenblätter</span>'
         f'<span class="stat-chip">📁 {Path(EXCEL_PATH).name}</span>',
@@ -294,30 +488,45 @@ def render_index(sheets: dict[str, SheetData]) -> None:
     )
     st.markdown("")
 
-    # Determine which cell values correspond to sheet names → build link map
-    sheet_names_lower = {s.lower(): s for s in sheets}
+    # Render the Index table (navigation via sidebar/expanders below)
+    html_table = render_sheet_html(index_data)
 
-    def index_link_resolver(sheet_name: str, cell_text: str) -> str | None:
-        key = cell_text.strip().lower()
-        target = sheet_names_lower.get(key)
-        return f"#sheet_{target}" if target and target != INDEX_SHEET else None
-
-    # Render the index sheet as a table first
-    html_table = render_sheet_html(index_data, link_resolver=None)
     st.markdown('<div class="table-scroll-wrapper">', unsafe_allow_html=True)
     st.markdown(html_table, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### 🔗 Direktlinks zu allen Tabellenblättern")
+    # ── Grouped quick-navigation below the table ───────────────────────────
+    if groups:
+        st.markdown("---")
+        st.markdown("### 🔗 Navigation nach Themenbereich")
+        for grp in groups:
+            valid = [e for e in grp.entries if e.short_name in sheets]
+            if not valid:
+                continue
+            with st.expander(grp.label, expanded=False):
+                cols = st.columns(3)
+                for i, entry in enumerate(valid):
+                    with cols[i % 3]:
+                        label = f"{entry.template_code}  {entry.short_name}" if entry.template_code else entry.short_name
+                        if st.button(
+                            label,
+                            key=f"idx_{grp.label}_{i}_{entry.short_name}",
+                            help=entry.template_name,
+                            use_container_width=True,
+                        ):
+                            go_to(entry.short_name)
+    else:
+        st.markdown("---")
+        st.markdown("### 🔗 Direktlinks zu allen Tabellenblättern")
+        cols = st.columns(3)
+        for i, name in enumerate(sheets):
+            if name == INDEX_SHEET:
+                continue
+            with cols[i % 3]:
+                if st.button(f"📋 {name}", key=f"idx_link_{name}", use_container_width=True):
+                    go_to(name)
 
-    cols = st.columns(3)
-    for i, name in enumerate(sheets):
-        if name == INDEX_SHEET:
-            continue
-        with cols[i % 3]:
-            if st.button(f"📋 {name}", key=f"idx_link_{name}", use_container_width=True):
-                go_to(name)
+
 
 
 def _render_fallback_index(sheets: dict[str, SheetData]) -> None:
@@ -331,18 +540,30 @@ def _render_fallback_index(sheets: dict[str, SheetData]) -> None:
 
 
 # ── Sheet page ─────────────────────────────────────────────────────────────────
-def render_sheet(sheet: SheetData) -> None:
+def render_sheet(sheet: SheetData, groups: list[IndexGroup]) -> None:
     # Title bar with back button
     col_back, col_title = st.columns([1, 6])
     with col_back:
         if st.button("⬅ Index", key="back_to_index", help="Zurück zur Index-Seite"):
             go_to(INDEX_SHEET)
     with col_title:
+        # Breadcrumb: find which group this sheet belongs to
+        breadcrumb = ""
+        for grp in groups:
+            for e in grp.entries:
+                if e.short_name == sheet.name:
+                    breadcrumb = (
+                        f"<span style='color:#8899BB;font-size:0.8rem'>"
+                        f"{grp.label} &rsaquo;</span> "
+                    )
+                    break
+
         n_rows = len(sheet.rows)
         n_cols = len(sheet.col_widths)
         st.markdown(
             f"""
             <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+                {breadcrumb}
                 <h2 style="margin:0;color:#1B2A4A;font-size:1.25rem">📋 {sheet.name}</h2>
                 <span class="stat-chip">{n_rows} Zeilen</span>
                 <span class="stat-chip">{n_cols} Spalten</span>
@@ -388,7 +609,7 @@ def render_error_page() -> None:
     st.markdown("### 📤 Oder Datei jetzt hochladen (temporär)")
     uploaded = st.file_uploader("Excel-Datei hochladen", type=["xlsx", "xls"])
     if uploaded:
-        import tempfile, shutil
+        import tempfile
         tmp = tempfile.mktemp(suffix=".xlsx")
         with open(tmp, "wb") as f:
             f.write(uploaded.read())
@@ -400,13 +621,13 @@ def render_error_page() -> None:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 def main() -> None:
-    sheets = load_workbook(EXCEL_PATH)
+    sheets, groups = load_workbook(EXCEL_PATH)
 
     if sheets is None:
         render_error_page()
         return
 
-    render_sidebar(sheets)
+    render_sidebar(sheets, groups)
 
     current = st.session_state.current_sheet
 
@@ -416,9 +637,9 @@ def main() -> None:
         st.session_state.current_sheet = current
 
     if current == INDEX_SHEET or current not in sheets:
-        render_index(sheets)
+        render_index(sheets, groups)
     else:
-        render_sheet(sheets[current])
+        render_sheet(sheets[current], groups)
 
 
 if __name__ == "__main__":
