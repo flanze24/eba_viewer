@@ -156,17 +156,12 @@ def render_sheet_html(
                 title_attr  = html.escape(f"{annotation}\n\n{cell.coordinate}" if annotation else cell.coordinate)
                 input_css   = (
                     css
-                    + ";background-color:#F0F4FF"
                     + ";position:relative"
                     + ";vertical-align:top"
                     + ";padding:0"
                 )
                 inner = (
-                    f'<div style="'
-                    f'font-size:7.5pt;color:#5573A8;line-height:1.1;'
-                    f'padding:1px 4px 0 4px;white-space:nowrap;overflow:hidden;'
-                    f'text-overflow:ellipsis;user-select:none;pointer-events:none'
-                    f'">{coord_esc}</div>'
+                    f'<div class="eba-coord-label">{coord_esc}</div>'
                     f'<div style="min-height:14px;padding:0 4px 2px 4px">&nbsp;</div>'
                     + _badge_html(annotation, f"{annotation}\n\n{cell.coordinate}")
                     + _tooltip_html(cell.coordinate, annotation)

@@ -1,6 +1,8 @@
 /* ==========================================================================
    eba_styles.css  –  EBA DPM Viewer · Tooltip & Cell Styles
    ==========================================================================
+   Corporate Identity: Sparkassen Rating und Risikosysteme GmbH (SR)
+   Primärfarbe: Sparkassen-Dunkelrot #CC0000 (ersetzt bisheriges Blau)
    Alle Klassen und ihre Parameter sind hier zentral kommentiert.
    Änderungen hier wirken sich sofort auf den gerenderten Viewer aus.
    ========================================================================== */
@@ -11,10 +13,30 @@
    Jede Zelle mit einer DPM-Koordinate bekommt diese Klasse.
    position:relative  →  Anker für den absolut positionierten Tooltip
    overflow:visible   →  Tooltip darf über die Zellengrenze hinausragen
+   background-color   →  Sehr helles Cremeweiß (SR-Akzent statt Hellblau)
    -------------------------------------------------------------------------- */
 .eba-coord-cell {
     position: relative;
     overflow: visible !important;
+    background-color: #FFF8F8;        /* SR: sehr helles Cremeweiß */
+}
+
+
+/* --------------------------------------------------------------------------
+   1a. KOORDINATEN-LABEL in Eingabezellen  (.eba-coord-label)
+   Kleine Koordinatenkennung oben in der Eingabezelle (z.B. C 01.00_0010_0020).
+   Nutzt gedämpftes Rot passend zur SR-Farbpalette.
+   -------------------------------------------------------------------------- */
+.eba-coord-label {
+    font-size: 7.5pt;
+    color: #B03030;                   /* SR: gedämpftes Rot */
+    line-height: 1.1;
+    padding: 1px 4px 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+    pointer-events: none;
 }
 
 
@@ -27,7 +49,7 @@
 .eba-label-cell {
     position: relative;
     overflow: visible !important;
-    cursor: default;                 /* Normaler Cursor (kein Text-Cursor) */
+    cursor: default;                  /* Normaler Cursor (kein Text-Cursor) */
 }
 
 
@@ -38,13 +60,13 @@
    -------------------------------------------------------------------------- */
 .eba-badge {
     position: absolute;
-    top: 2px;                        /* Abstand vom oberen Zellenrand */
-    right: 3px;                      /* Abstand vom rechten Zellenrand */
-    width: 7px;                      /* Breite des Punktes */
-    height: 7px;                     /* Höhe des Punktes */
-    border-radius: 50%;              /* Rund (Kreis) */
-    background: #F59E0B;             /* Farbe: Amber/Orange */
-    pointer-events: none;            /* Klick geht durch zum td */
+    top: 2px;                         /* Abstand vom oberen Zellenrand */
+    right: 3px;                       /* Abstand vom rechten Zellenrand */
+    width: 7px;                       /* Breite des Punktes */
+    height: 7px;                      /* Höhe des Punktes */
+    border-radius: 50%;               /* Rund (Kreis) */
+    background: #CC0000;              /* SR: Sparkassen-Rot (vorher: Amber/Orange) */
+    pointer-events: none;             /* Klick geht durch zum td */
     z-index: 1;
 }
 
@@ -52,40 +74,40 @@
 /* --------------------------------------------------------------------------
    4. TOOLTIP-CONTAINER  (.eba-tooltip)
    Die eigentliche Sprechblase. Standardmäßig unsichtbar (display:none),
-   wird bei Hover auf die Elternzelle eingeblendet (siehe Regel 7 & 8).
+   wird bei Hover auf die Elternzelle eingeblendet (siehe Regel 8 & 9).
    -------------------------------------------------------------------------- */
 .eba-tooltip {
-    display: none;                   /* Versteckt bis Hover */
+    display: none;                    /* Versteckt bis Hover */
     position: absolute;
-    z-index: 9999;                   /* Immer im Vordergrund */
-    top: calc(100% + 4px);          /* Direkt unterhalb der Zelle, 4px Abstand */
-    left: 0;                         /* Linksbündig mit Zelle */
-    min-width: 200px;                /* Mindestbreite der Sprechblase */
-    max-width: 340px;                /* Maximale Breite (bricht dann um) */
-    background: #1B2A4A;            /* Hintergrundfarbe: Dunkelblau */
-    border: 1px solid #4D9FEC;      /* Rahmen: Hellblau */
-    border-radius: 6px;             /* Abgerundete Ecken */
-    padding: 8px 10px;              /* Innenabstand oben/unten · links/rechts */
+    z-index: 9999;                    /* Immer im Vordergrund */
+    top: calc(100% + 4px);           /* Direkt unterhalb der Zelle, 4px Abstand */
+    left: 0;                          /* Linksbündig mit Zelle */
+    min-width: 200px;                 /* Mindestbreite der Sprechblase */
+    max-width: 340px;                 /* Maximale Breite (bricht dann um) */
+    background: #2B2B2B;             /* SR: Dunkel-Anthrazit (vorher: Dunkelblau) */
+    border: 1px solid #CC0000;       /* SR: Sparkassen-Rot (vorher: Hellblau) */
+    border-radius: 6px;              /* Abgerundete Ecken */
+    padding: 8px 10px;               /* Innenabstand oben/unten · links/rechts */
     box-shadow: 0 4px 16px rgba(0,0,0,0.35); /* Schatten für Tiefenwirkung */
-    pointer-events: none;            /* Tooltip selbst reagiert nicht auf Maus */
-    white-space: normal;             /* Text bricht um */
-    word-break: break-word;          /* Lange Wörter werden getrennt */
-    font-size: 9pt !important;      /* Schriftgröße (überschreibt Tabellen-CSS) */
-    line-height: 1.5 !important;    /* Zeilenabstand */
+    pointer-events: none;             /* Tooltip selbst reagiert nicht auf Maus */
+    white-space: normal;              /* Text bricht um */
+    word-break: break-word;           /* Lange Wörter werden getrennt */
+    font-size: 9pt !important;       /* Schriftgröße (überschreibt Tabellen-CSS) */
+    line-height: 1.5 !important;     /* Zeilenabstand */
 }
 
 
 /* --------------------------------------------------------------------------
    5. KOORDINATEN-ZEILE im Tooltip  (.eba-tooltip-coord)
    Zeigt den technischen Koordinaten-String (z.B. "C 01.00_0010_0020").
-   Erscheint als erste Zeile im Tooltip in einem hellen Blau.
+   Erscheint als erste Zeile im Tooltip in einem hellen Rot.
    -------------------------------------------------------------------------- */
 .eba-tooltip-coord {
     display: block;
-    color: #7EB8F7;                  /* Hellblau für technische Kennung */
-    font-size: 8pt !important;      /* Etwas kleiner als Annotationstext */
-    font-weight: 600;                /* Halbfett */
-    letter-spacing: 0.3px;          /* Leichtes Sperren für Lesbarkeit */
+    color: #F08080;                   /* SR: Hellrot (vorher: Hellblau) */
+    font-size: 8pt !important;       /* Etwas kleiner als Annotationstext */
+    font-weight: 600;                 /* Halbfett */
+    letter-spacing: 0.3px;           /* Leichtes Sperren für Lesbarkeit */
     margin-bottom: 2px;
 }
 
@@ -98,7 +120,7 @@
 .eba-tooltip-divider {
     display: block;
     border-top: 1px solid rgba(255,255,255,0.15); /* Dezente weiße Linie */
-    margin: 5px 0;                   /* Abstand oben und unten */
+    margin: 5px 0;                    /* Abstand oben und unten */
 }
 
 
@@ -108,8 +130,8 @@
    -------------------------------------------------------------------------- */
 .eba-tooltip-text {
     display: block;
-    color: #E8EFF8;                  /* Fast-Weiß für gute Lesbarkeit */
-    font-size: 9pt !important;      /* Lesbare Schriftgröße */
+    color: #F0F0F0;                   /* SR: Fast-Weiß (vorher: #E8EFF8) */
+    font-size: 9pt !important;       /* Lesbare Schriftgröße */
 }
 
 

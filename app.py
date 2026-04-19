@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from excel_parser import parse_workbook, SheetData
 from renderer import render_sheet_html
+from docx_annotations import get_sheet_annotations, render_annotation
 
 
 # ── Page setup ────────────────────────────────────────────────────────────────
@@ -46,9 +47,9 @@ st.set_page_config(
 # Global CSS
 st.markdown("""
 <style>
-/* App-wide font – single unified stack for all UI and table text */
+/* App-wide font – Sparkasse Head as primary, Segoe UI as fallback */
 html, body, [class*="css"], table, td, th {
-    font-family: 'Segoe UI', 'Inter', 'Calibri', system-ui, sans-serif !important;
+    font-family: 'Sparkasse Head', 'Segoe UI', 'Inter', 'Calibri', system-ui, sans-serif !important;
 }
 
 /* Single authoritative font-size for ALL table content – no exceptions */
@@ -59,13 +60,13 @@ table, table td, table th, table * {
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #1B2A4A;
-    color: #E8EFF8;
+    background: #2B2B2B;              /* SR: Dunkelgrau-Anthrazit */
+    color: #E8E8E8;
     min-width: 260px;
 }
 /* Group header labels */
 section[data-testid="stSidebar"] .sidebar-group-label {
-    color: #7EB8F7;
+    color: #E84040;                   /* SR: Hellrot statt Hellblau */
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1.2px;
@@ -78,7 +79,7 @@ section[data-testid="stSidebar"] .stButton button {
     width: 100%;
     text-align: left;
     background: transparent;
-    color: #C8D8F0;
+    color: #E8E8E8;
     border: none;
     border-left: 3px solid transparent;
     border-radius: 0;
@@ -92,12 +93,12 @@ section[data-testid="stSidebar"] .stButton button {
 }
 section[data-testid="stSidebar"] .stButton button:hover {
     background: rgba(255,255,255,0.08);
-    border-left-color: #4D9FEC;
+    border-left-color: #CC0000;       /* SR: Sparkassen-Rot */
     color: #ffffff;
 }
 section[data-testid="stSidebar"] .stButton button[kind="primary"] {
-    background: rgba(77,159,236,0.18) !important;
-    border-left-color: #4D9FEC !important;
+    background: rgba(204,0,0,0.15) !important;  /* SR: Rot-Tint statt Blau-Tint */
+    border-left-color: #CC0000 !important;
     color: #ffffff !important;
     font-weight: 600;
 }
@@ -106,7 +107,7 @@ section[data-testid="stSidebar"] hr {
     margin: 6px 0;
 }
 section[data-testid="stSidebar"] h1 {
-    color: #E8EFF8;
+    color: #E8E8E8;
     font-size: 1.1rem;
 }
 
@@ -116,17 +117,17 @@ section[data-testid="stSidebar"] h1 {
     align-items: center;
     gap: 12px;
     padding: 10px 0 16px 0;
-    border-bottom: 2px solid #2B5FA8;
+    border-bottom: 2px solid #CC0000;  /* SR: Sparkassen-Rot */
     margin-bottom: 16px;
 }
 .eba-header h1 {
     margin: 0;
     font-size: 1.5rem;
-    color: #1B2A4A;
+    color: #1A1A1A;                    /* SR: Fast-Schwarz */
     font-weight: 700;
 }
 .eba-header .badge {
-    background: #2B5FA8;
+    background: #CC0000;               /* SR: Sparkassen-Rot */
     color: white;
     padding: 2px 10px;
     border-radius: 12px;
@@ -140,8 +141,8 @@ section[data-testid="stSidebar"] h1 {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #F0F4FA;
-    border: 1px solid #C5D5E8;
+    background: #F5F5F5;               /* SR: Neutralgrau */
+    border: 1px solid #DDDDDD;         /* SR: Mittelgrau */
     border-radius: 6px;
     padding: 8px 16px;
     margin-bottom: 12px;
@@ -149,10 +150,10 @@ section[data-testid="stSidebar"] h1 {
 .sheet-title-bar h2 {
     margin: 0;
     font-size: 1.1rem;
-    color: #1B2A4A;
+    color: #1A1A1A;                    /* SR: Fast-Schwarz */
 }
 .back-btn {
-    background: #2B5FA8 !important;
+    background: #CC0000 !important;    /* SR: Sparkassen-Rot */
     color: white !important;
     border: none !important;
     border-radius: 4px !important;
@@ -162,14 +163,14 @@ section[data-testid="stSidebar"] h1 {
     transition: background 0.15s !important;
 }
 .back-btn:hover {
-    background: #1B4A8A !important;
+    background: #990000 !important;    /* SR: Dunkelrot vertieft */
 }
 
 /* Scrollable table wrapper */
 .table-scroll-wrapper {
     overflow: auto;
     max-height: 78vh;
-    border: 1px solid #D0D8E8;
+    border: 1px solid #DDDDDD;         /* SR: Mittelgrau */
     border-radius: 4px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.06);
 }
@@ -177,8 +178,8 @@ section[data-testid="stSidebar"] h1 {
 /* Index cards */
 .index-card {
     background: white;
-    border: 1px solid #C5D5E8;
-    border-left: 4px solid #2B5FA8;
+    border: 1px solid #DDDDDD;         /* SR: Mittelgrau */
+    border-left: 4px solid #CC0000;    /* SR: Sparkassen-Rot */
     border-radius: 6px;
     padding: 10px 16px;
     margin-bottom: 8px;
@@ -186,8 +187,8 @@ section[data-testid="stSidebar"] h1 {
     transition: box-shadow 0.15s, border-left-color 0.15s;
 }
 .index-card:hover {
-    box-shadow: 0 2px 8px rgba(43,95,168,0.2);
-    border-left-color: #4D9FEC;
+    box-shadow: 0 2px 8px rgba(204,0,0,0.2);  /* SR: Roter Schatten */
+    border-left-color: #990000;        /* SR: Dunkelrot vertieft */
 }
 
 /* Error box */
@@ -202,8 +203,8 @@ section[data-testid="stSidebar"] h1 {
 /* Stat chips */
 .stat-chip {
     display:inline-block;
-    background:#E8F0FC;
-    color:#1B2A4A;
+    background:#FDECEA;                /* SR: sehr helles Rot */
+    color:#990000;                     /* SR: Dunkelrot vertieft */
     border-radius:12px;
     padding:2px 10px;
     font-size:0.78rem;
@@ -407,12 +408,13 @@ def load_workbook(path: str):
         sheets = parse_workbook(path)
         _apply_annotations(sheets, csv_path)
         groups = _parse_index_structure(path)
-        return sheets, groups
+        sheet_annotations = get_sheet_annotations(path)
+        return sheets, groups, sheet_annotations
     except FileNotFoundError:
-        return None, []
+        return None, [], {}
     except Exception as exc:
         st.error(f"Fehler beim Laden der Datei: {exc}")
-        return None, []
+        return None, [], {}
 
 
 def _apply_annotations(sheets: dict[str, SheetData], csv_path: Path) -> None:
@@ -502,7 +504,7 @@ def render_sidebar(sheets: dict[str, SheetData], groups: list[IndexGroup]) -> No
 
         st.markdown("---")
         st.markdown(
-            f"<small style='color:#8899BB'>Datei:<br><code style='font-size:0.7rem'>"
+            f"<small style='color:#888888'>Datei:<br><code style='font-size:0.7rem'>"
             f"{Path(EXCEL_PATH).name}</code></small>",
             unsafe_allow_html=True,
         )
@@ -593,7 +595,7 @@ def _render_fallback_index(sheets: dict[str, SheetData]) -> None:
 
 
 # ── Sheet page ─────────────────────────────────────────────────────────────────
-def render_sheet(sheet: SheetData, groups: list[IndexGroup]) -> None:
+def render_sheet(sheet: SheetData, groups: list[IndexGroup], sheet_annotations: dict) -> None:
     # Title bar with back button
     col_back, col_title = st.columns([1, 6])
     with col_back:
@@ -606,7 +608,7 @@ def render_sheet(sheet: SheetData, groups: list[IndexGroup]) -> None:
             for e in grp.entries:
                 if e.short_name == sheet.name:
                     breadcrumb = (
-                        f"<span style='color:#8899BB;font-size:0.8rem'>"
+                        f"<span style='color:#666666;font-size:0.8rem'>"
                         f"{grp.label} &rsaquo;</span> "
                     )
                     break
@@ -617,7 +619,7 @@ def render_sheet(sheet: SheetData, groups: list[IndexGroup]) -> None:
             f"""
             <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
                 {breadcrumb}
-                <h2 style="margin:0;color:#1B2A4A;font-size:1.25rem">📋 {sheet.name}</h2>
+                <h2 style="margin:0;color:#1A1A1A;font-size:1.25rem">📋 {sheet.name}</h2>
                 <span class="stat-chip">{n_rows} Zeilen</span>
                 <span class="stat-chip">{n_cols} Spalten</span>
             </div>
@@ -626,6 +628,9 @@ def render_sheet(sheet: SheetData, groups: list[IndexGroup]) -> None:
         )
 
     st.markdown("")
+
+    # DOCX annotation (expander vor der Tabelle, leer → wird nicht angezeigt)
+    render_annotation(sheet_annotations.get(sheet.name, ""))
 
     # Render table
     html_table = render_sheet_html(sheet)
@@ -674,7 +679,7 @@ def render_error_page() -> None:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 def main() -> None:
-    sheets, groups = load_workbook(EXCEL_PATH)
+    sheets, groups, sheet_annotations = load_workbook(EXCEL_PATH)
 
     if sheets is None:
         render_error_page()
@@ -692,7 +697,7 @@ def main() -> None:
     if current == INDEX_SHEET or current not in sheets:
         render_index(sheets, groups)
     else:
-        render_sheet(sheets[current], groups)
+        render_sheet(sheets[current], groups, sheet_annotations)
 
 
 if __name__ == "__main__":
